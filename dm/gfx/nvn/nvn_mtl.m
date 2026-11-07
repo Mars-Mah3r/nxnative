@@ -2517,7 +2517,7 @@ static void alias_retire_idle(void) {
         nvn_hm_del(&g_alias_seen, &cs[j].k); nvn_hm_del(&g_alias_lseen, &cs[j].k); nvn_hm_put(&g_alias_gone, &cs[j].k, (void *)1);
         id o = CFBridgingRelease(old);
         if (g_alias_set) CFSetRemoveValue(g_alias_set, (__bridge const void *)o);
-        if (serial_holds(&g_ghost, o)) defer_obj_unref(o); else defer_obj_release(o);
+        if (entry_holds((__bridge const void *)o)) defer_obj_unref(o); else defer_obj_release(o);   // a finalized serial (ghost ring) may still hold it
         take++; freed += cs[j].bytes;
     }
     if (take) { g_ser_gen++; g_alias_idle += take; }
@@ -4225,7 +4225,7 @@ static id<MTLTexture> pool_heap_texture(const tex_t *t, MTLTextureDescriptor *d)
     res_add(mt); g_pool_heap_tex++;
     size_t g0 = at / POOL_HEAP_GRAIN, g1 = MIN((at + need.size - 1) / POOL_HEAP_GRAIN, h->ngrain - 1); int all_new = 1;
     for (size_t g = g0; g <= g1; g++) { if (h->used[g]) all_new = 0; h->used[g] = 1; }
-    if (all_new && !tex_init_fill(t, mt)) tex_zero_fill(mt);
+    if (all_new && !tex_init_fill(t, mt, 0)) tex_zero_fill(mt);
     return mt;
 }
 static id<MTLTexture> tex_mtl_(const tex_t *ct) {
