@@ -26,7 +26,14 @@ def frame_step(ctx):
               0x1e210808,   # fmul s8,s0,s1          step × base rate
               0x52a84e10,   # mov w16,#0x42700000    60.0
               0x1e270200,   # fmov s0,w16
-              0x1e201908):  # fdiv s8,s8,s0          / 60
+              0x1e201908,   # fdiv s8,s8,s0          / 60
+              # Never below the measured frame time: with the hold off (DM_FPS_HOLD off) or between steps, a frame that ran long still moves the game by its real time
+              # (state +0x38, seconds, the host's mean of recent present intervals; 0 at the target; +0x3c marks a main that reads it). From PR #1543, found by gunvalk (Lichii PR #216)
+              0x52800030,   # mov w16,#1
+              0xb9003e30,   # str w16,[x17,#0x3c]    this main reads the frame time
+              0xbd403a20,   # ldr s0,[x17,#0x38]     seconds; 0 = at the target
+              0x1e210800,   # fmul s0,s0,s1          × base rate
+              0x1e204908):  # fmax s8,s8,s0
         emit(w)
     emit(B(here(), site + 4))
     emit(0x1e201828); emit(B(here(), site + 4))   # orig: fdiv s8,s1,s0; back
