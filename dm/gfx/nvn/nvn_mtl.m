@@ -7785,6 +7785,7 @@ static _Atomic uint64_t g_pb_built, g_pb_archived, g_pb_reused, g_pb_spec, g_pb_
 static _Atomic uint64_t g_pt_hit_n, g_pt_hit_ns, g_pt_miss_n, g_pt_miss_ns, g_pt_spec_ns, g_pt_comp_ns, g_pt_pred_n, g_pt_pred_ns, g_pp_done_n;   // bases compiled / taken from the archive / reused, specializations, MTLDevice builds
 typedef struct { const void *vf, *ff; uint32_t samples, a2c, rast, topo, amp; uint32_t va[31][3], vl[31][3]; } pbase_key;   // what a base depends on: pso_desc's descriptor less the colour attachments
 static nvn_hmap g_pbase = {.klen = sizeof(pbase_key)};
+static _Atomic uint64_t g_pbase_epoch;   // bases put into g_pbase so far: a pipeline the archive had no base for may find one after it changes (arch_miss_known)
 // Only callers for the same base wait on this group; unrelated bases compile in parallel.
 // compiled: its owner asked the compiler (a compile 0 owner only looks in the archive, and a waiter that needs the base builds it itself when that found none).
 @interface PbaseBuild : NSObject { @public dispatch_group_t done; id<MTLRenderPipelineState> ps; NSError *error; int compiled; } @end
@@ -8257,7 +8258,7 @@ static id<MTLRenderPipelineState> pso_build_ex(MTLRenderPipelineDescriptor *d, N
         if (base || compile) g_pb_base_ns += bp_now() - t0;
         os_unfair_lock_lock(&g_pbase_lock);
         job->ps = base;
-        if (base) hm_put_id(&g_pbase, &bk, base);
+        if (base) { hm_put_id(&g_pbase, &bk, base); g_pbase_epoch++; }
         hm_rel(nvn_hm_del(&g_pbase_pending, &bk)); dispatch_group_leave(job->done);
         os_unfair_lock_unlock(&g_pbase_lock);
         if (!base) { if (compile && e) *e = job->error; return nil; }   // NOLINT(clang-analyzer-osx.cocoa.RetainCount): job stays in g_pbase_pending (hm_put_id's CFBridgingRetain) until hm_rel releases it, not a leak
@@ -8305,6 +8306,10 @@ static dispatch_queue_t pp_bg_queue(void) {
     static dispatch_queue_t q[8]; static int n; static _Atomic unsigned rr; static dispatch_once_t once;
     dispatch_once(&once, ^{ int pc = 0; size_t sz = sizeof pc; if (sysctlbyname("hw.perflevel0.physicalcpu", &pc, &sz, NULL, 0) || pc < 2) pc = 2;
         n = pc / 2 > 8 ? 8 : pc / 2;
+        // At least 3: an iPhone with 2 performance cores had one queue, and Ocarina of Time's Castle Town demanded about 400 builds of about 1 s each on entering; 16 finished
+        // in 300 frames, the table (PSO_PEND_MAX) stayed full and later demands were refused. DM_PSO_BG_QUEUES=<1-8> sets the number
+        if (n < 3) n = 3;
+        { const char *ev = getenv("DM_PSO_BG_QUEUES"); int v = ev ? atoi(ev) : 0; if (v >= 1 && v <= 8) n = v; }
         for (int i = 0; i < n; i++) q[i] = dispatch_queue_create("dm.nvn.pso-bg", dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_UTILITY, 0)); });
     return q[atomic_fetch_add(&rr, 1) % (unsigned)n];
 }
@@ -8396,6 +8401,18 @@ static nvn_hmap g_pso_hy = {.klen = sizeof(pso_key)};   // pulling pipelines by 
 static int g_pso_pull;   // the pipeline pso_get_ returned reads its vertex streams through the layout block
 static _Atomic uint64_t g_hy_draws, g_hy_made, g_hy_none, g_hy_kicked, g_hy_ns;   // draws with a pulling pipeline, pulling pipelines made, misses with no pulling base ready, pulling bases built for later, time
 static NSMutableSet<NSData *> *g_hy_kick_set; static os_unfair_lock g_hy_lock = OS_UNFAIR_LOCK_INIT;
+// Pipelines whose base was neither made nor in an archive when a hybrid draw asked (submit thread). A draw of such a pipeline goes straight to its stand-in and does not
+// search the archives again: each search that finds nothing took 2-3 ms, and Ocarina of Time's Castle Town repeated it for its waiting pipelines on every draw of every frame
+// (about 90 % of the submit thread, frames of 40-90 ms) while their builds queued. The set is emptied, at most once a second, after a base is added, since a new base can
+// serve a pipeline that missed
+static nvn_hmap g_arch_miss = {.klen = sizeof(pso_key)};
+static int arch_miss_known(const pso_key *k) {
+    static uint64_t epoch, last_ns;
+    uint64_t ep = atomic_load(&g_pbase_epoch);
+    if (ep != epoch && g_arch_miss.n) { uint64_t now = bp_now(); if (now - last_ns >= 1000000000ull) { nvn_hm_clear(&g_arch_miss, NULL); epoch = ep; last_ns = now; } }
+    return nvn_hm_get(&g_arch_miss, k) != NULL;
+}
+static void arch_miss_note(const pso_key *k) { if (g_arch_miss.n < (1u << 16)) nvn_hm_put(&g_arch_miss, k, (void *)1); }
 static MTLRenderPipelineDescriptor *pso_desc_pull(const pso_key *k, NvShader *vs, NvShader *fs) {   // pso_desc's pipeline with the pulling entry point and no vertex descriptor
     id<MTLFunction> pf = pull_fn(vs); if (!pf) return nil;
     MTLRenderPipelineDescriptor *d = pso_desc(k, vs, fs, nil, 0);
@@ -8709,12 +8726,13 @@ static __unsafe_unretained id<MTLRenderPipelineState> pso_get_(NvProg *pr, MTLRe
         int st = pso_pend_try(&k, &ps);
         if (st == 2) took = 1;   // built in the background (nil: it failed, and is built again below for its message)
         else {
-            if (st == 0) ps = pso_build_ex(pso_desc(&k, vs, fs, nil, 0), &e, 0);   // its base made or archived: no compile
+            int known_miss = st == 0 && arch_miss_known(&k);
+            if (st == 0 && !known_miss) ps = pso_build_ex(pso_desc(&k, vs, fs, nil, 0), &e, 0);   // its base made or archived: no compile
             if (!ps) {
                 // Demand first (main's order): the draw's own pipeline is queued before the prediction admits speculative builds; with a stand-in nothing waits for it
                 __unsafe_unretained id<MTLRenderPipelineState> h = hybrid_get(&k, vs, fs);
                 if (h) {
-                    if (st == 0) pso_pend_demand(&k, vs, fs);
+                    if (st == 0) { if (!known_miss) arch_miss_note(&k); pso_pend_demand(&k, vs, fs); }
                     g_pso_pull = 1; g_hy_ns += bp_now() - bt;
                     if (g_pp_submit_mark != g_sub_serial) { g_pp_submit_mark = g_sub_serial; uint64_t t0 = bp_now(); pso_predict_rest(); g_bp_pso_ns += bp_now() - t0; }
                     return h;
