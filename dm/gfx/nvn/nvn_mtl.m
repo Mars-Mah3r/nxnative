@@ -8355,7 +8355,12 @@ static struct { pso_key k; id<MTLRenderPipelineState> ps; MTLRenderPipelineDescr
 static pthread_mutex_t g_pp_mu = PTHREAD_MUTEX_INITIALIZER; static pthread_cond_t g_pp_cv = PTHREAD_COND_INITIALIZER;
 static uint64_t g_pp_submit_mark, g_pp_kicked, g_pp_taken, g_pp_stolen;   // Whether this submission has already been predicted (by submission serial); cumulative kicked / taken counts
 static void pso_predict_rest(void);
-static int pso_pend_find(const pso_key *k) { for (int i = 0; i < PSO_PEND_MAX; i++) if (g_pp[i].used && !memcmp(&g_pp[i].k, k, sizeof *k)) return i; return -1; }
+// The table's keys → slot + 1 (with g_pp_mu held), so a lookup is one hash probe: a hybrid draw looked its pipeline up here up to three times, each a walk of all
+// PSO_PEND_MAX slots, on every draw of every frame while its build waited (Ocarina of Time's Castle Town: ~200 such draws a frame with the table full). g_pp_rel counts
+// the slots let go, so a demand into a full table with nothing finished or freed since the last full walk is refused without walking it again (pso_pend_slot)
+static nvn_hmap g_pp_idx = {.klen = sizeof(pso_key)}; static uint64_t g_pp_rel;
+static int pso_pend_find(const pso_key *k) { void *v = nvn_hm_get(&g_pp_idx, k); return v ? (int)(uintptr_t)v - 1 : -1; }
+static void pso_pend_free(int at) { nvn_hm_del(&g_pp_idx, &g_pp[at].k); g_pp[at].used = 0; g_pp_rel++; }
 static int hybrid_on(void);
 // The queue of the builds hybrid draws asked for (the draw has a pulling stand-in, so nothing waits for them): serial queues at utility QoS, one per two performance cores, round
 // robin. At user-initiated QoS on the global queue, a cold start's burst (777 builds on entering Zora's Domain, Breath of the Wild) ran on every core, beside the game's own threads,
@@ -8380,6 +8385,8 @@ static const char *const g_pw_why[5] = {"hybrid off", "merged pass or readable t
 static int pso_pend_slot(const pso_key *k, int spec, uint32_t *gen) {
     int slot = -1, reclaim = -1, active = 0;
     if (pso_pend_find(k) >= 0) return -1;
+    static uint64_t full_at = UINT64_MAX; uint64_t mark = g_pp_rel + atomic_load(&g_pp_done_n);
+    if (g_pp_idx.n >= PSO_PEND_MAX && full_at == mark) return -1;   // full, and nothing has finished or been let go since the last walk found no room
     for (int i = 0; i < PSO_PEND_MAX; i++) {
         if (!g_pp[i].used) { if (slot < 0) slot = i; }
         else if (!g_pp[i].done) active += !g_pp[i].demand;
@@ -8387,8 +8394,10 @@ static int pso_pend_slot(const pso_key *k, int spec, uint32_t *gen) {
     }
     if (spec && active >= PSO_PEND_ACTIVE) return -1;
     if (slot < 0) slot = reclaim;
-    if (slot < 0) return -1;
+    if (slot < 0) { full_at = mark; return -1; }
+    if (g_pp[slot].used) nvn_hm_del(&g_pp_idx, &g_pp[slot].k);   // a reclaimed finished entry: its key leaves the index
     g_pp[slot].k = *k; g_pp[slot].ps = nil; g_pp[slot].d = nil; g_pp[slot].done = g_pp[slot].run = 0; g_pp[slot].used = 1; g_pp[slot].demand = !spec;
+    nvn_hm_put(&g_pp_idx, k, (void *)(uintptr_t)(slot + 1));
     g_pp[slot].order = ++g_pp_kicked; *gen = ++g_pp[slot].gen;
     return slot;
 }
@@ -8425,11 +8434,11 @@ static id<MTLRenderPipelineState> pso_pend_take(const pso_key *k) {
     pthread_mutex_lock(&g_pp_mu);
     int at = pso_pend_find(k); id<MTLRenderPipelineState> ps = nil;
     if (at >= 0 && !g_pp[at].done && !g_pp[at].run && g_pp[at].d) {
-        MTLRenderPipelineDescriptor *d = g_pp[at].d; g_pp[at].d = nil; g_pp[at].used = 0;
+        MTLRenderPipelineDescriptor *d = g_pp[at].d; g_pp[at].d = nil; pso_pend_free(at);
         pthread_mutex_unlock(&g_pp_mu);
         g_pp_stolen++; NSError *e = nil; return pso_build(d, &e);
     }
-    if (at >= 0) { while (!g_pp[at].done) pthread_cond_wait(&g_pp_cv, &g_pp_mu); ps = g_pp[at].ps; g_pp[at].ps = nil; g_pp[at].used = 0; }
+    if (at >= 0) { while (!g_pp[at].done) pthread_cond_wait(&g_pp_cv, &g_pp_mu); ps = g_pp[at].ps; g_pp[at].ps = nil; pso_pend_free(at); }
     pthread_mutex_unlock(&g_pp_mu);
     return ps;
 }
@@ -8438,7 +8447,7 @@ static int pso_pend_try(const pso_key *k, id<MTLRenderPipelineState> *out) {
     pthread_mutex_lock(&g_pp_mu);
     int at = pso_pend_find(k), st = at < 0 ? 0 : g_pp[at].done ? 2 : 1;
     *out = nil;
-    if (st == 2) { *out = g_pp[at].ps; g_pp[at].ps = nil; g_pp[at].d = nil; g_pp[at].used = 0; }
+    if (st == 2) { *out = g_pp[at].ps; g_pp[at].ps = nil; g_pp[at].d = nil; pso_pend_free(at); }
     pthread_mutex_unlock(&g_pp_mu);
     return st;
 }
