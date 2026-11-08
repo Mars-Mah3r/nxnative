@@ -57,3 +57,38 @@ draw_barriers	game
 # As Tears of the Kingdom: the terrain's height, blend and hole maps are written by the CPU into textures after they are created. Without these keys they stay zero: holes in the ground and the wrong materials
 tex_flush_upload	on
 tex_dirty_upload	on
+# At 30 fps an iPhone lowers the GPU clock until the work fills most of the frame (iPhone 18 Pro at render scale 0.25: GPU p50 12 ms at 60 fps, 29-30 ms at 30, p95 33-38 ms;
+# log 60: 195 of 300 frames over 33.3 ms, p99 64 ms, 109 payback steps of 3 in 40 s). Three things make the 30 steady:
+# present snapshots, so the game's swapchain texture is free at once and its CPU work overlaps the GPU's instead of starting on the link's tick (log 60 had them off: frame
+# p50 35.9 ms against GPU 29.7 ms, the two back to back; A12 with them on held a p50 of 33.3 ms at the same GPU time). The launcher's Frame buffering row starts on
+# HookLink: off here, as 1.7 ran; the launcher's 30 fps modes turn it on (DM_PRESENT_SNAP)
+present_snap	off
+# the display link's frame latency 2 at the 30 fps cap: 66 ms from submission to display instead of 33, so a 34-38 ms frame is absorbed while the mean fits
+link_latency30	2
+# no payback: a late frame's lost time is let go (the game slows by it, as on the console) instead of a step of 3 vsyncs shown for 2, a half-frame jump in motion on the next frame
+# HookLink: on here, so 60 fps and Unlocked keep real speed as in 1.7; the launcher's steady 30 fps modes turn it off (DM_FPS_PAYBACK=off)
+fps_payback	on
+# The iPhone's touch gamepad starts in the full (3D) layout: the D-pad, L3 / R3 and the right stick, which turns the camera (a drag in the right third of the screen); the simple
+# layout has no right stick. A layout the player switches to in the game menu is kept
+pad_layout	native
+# The touch controls' Forest colours: blue A, green B, yellow X / Y, red +, deep green shoulders, bronze D-pad, gold rims, all translucent (DmGamepad.m theme_init)
+pad_theme	forest
+# Dynamic resolution reads the GPU time between the frame's timestamp reports, as on Donkey Kong Bananza and Breath of the Wild (the same EPD engine family): with one time a submission it
+# read about 0 and kept the full 1440x810 at 20-24 ms of GPU a frame on a MacBook Air M5. Each report takes its segment's GPU start / end (nvn_mtl.m rep_ticks)
+gpu_timestamps	segment
+# The game upscales through a chain: agl_ndsr_vr feature pass, network and blend at the render size, agl_ndsr_vr_light scale to 1920x1080. DM_UPSCALER=metalfx skips the chain for MetalFX (nvn_mtl.m up_chain)
+upscaler_chain	f8965bffbdf51d78,d17eefaff4f0bc23,a335c1db6270c355>aad7ea7e5c02f41d|b106afba1a18faa9|fa3033d05c0a41d6|04135bb812a0d66e|8df148d58b7cbe8e
+# Colour render targets drawn only as attachments (RGBA8 / BGRA8 / RGBA16F) kept with Metal lossy compression (rt_lossy, nvn_mtl.m rt_lossy): about 100 MB less in Link's house at 720p;
+# the scene colour (RG11B10F) and depth have no lossy form
+rt_lossy	on
+# The game's compute dispatches with no barrier of its between them run side by side (nvn_mtl.m dispatch_enc): 117 at the start of a frame in Kokiri Forest waited each for the one
+# before, 5.7 ms; side by side 3.7 ms, the frame 27.1 -> 24.9 ms (docked, Apple M4 Pro), the picture within run-to-run noise (from the Mighty Green Kokiri Kid fork, 5208584a)
+dispatch_overlap	on
+# One Render scale slider in place of the Resolution row (Normal / Potato): a fixed fraction of the game's base size (render_base: 2560x1440 docked, 1920x1080
+# handheld), from 0.25 (480x270 handheld, marked Potato) to 1.0 (1920x1080); 0.667 is the old Normal's 1280x720. The render-scale stub (patches.py) fixes every value up to 1.0
+res_presets	off
+render_base	2560x1440 1920x1080
+render_scale	0.25:1.0:0.05
+render_scale_default	0.667
+render_scale_marks	0.25=Potato
+frame_wg	off
