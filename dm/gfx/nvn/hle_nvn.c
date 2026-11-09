@@ -1508,6 +1508,8 @@ NVN(nvnWindowGetCrop, void, const NVNwindow *w, NVNrectangle *r) {   // Bayonett
 static void trow(uint64_t f, const char *name, double v);
 static void set_time_constraint(uint64_t period_ns);
 static void rt_comp_tick(uint64_t period_ns);
+static void rt_recheck(uint64_t period_ns);
+static uint64_t g_rt_redeclared;   // times rt_recheck found the policy taken back and declared it again
 static double g_rt_comp_ms;   // Currently declared real-time computation amount (ms; 0 = not declared)
 static double g_rt_period_ms;
 static void sleep_until_ns(uint64_t dl);
@@ -1538,6 +1540,7 @@ NVN(nvnWindowAcquireTexture, NVNwindowAcquireTextureResult, NVNwindow *w, NVNsyn
         static uint64_t rt_period; uint64_t period = present_period(o), rtp = rt_period_ns(o, period);
         if (rtp && rt_period != rtp) { rt_period = rtp; set_time_constraint(rtp); }
         rt_comp_tick(rtp);
+        rt_recheck(rtp);
         uint64_t p0 = now_ns(); int snap = mtl_snap_on();
         if (snap && mtl_link_active() && mtl_link_stalled()) { if (wait) sleep_until_ns(at); }   // present snapshots (nvn_mtl.m) while the display link is silent (the window in the background or covered):
             // frames are dropped as fast as they come and nothing frees a ring slot later, so the texture's slot time paces the game: unpaced, Breath of the Wild ran 3 to 4.5 times real time there.
@@ -1736,7 +1739,7 @@ static void tsummary(uint64_t frame) {
               cyc / 1e6 / nf, cyc / (double)(ci - pi), cpu / 1e6 / nf, (double)(ck - pk) / 1e6 / nf, (double)(cw - pw) / 1e6 / nf, cpu > 0 ? cyc / cpu : 0, (unsigned)qc, an, (unsigned long long)aw, g_rt_comp_ms, (double)(yn - pyn) / nf, (double)(yns - pyns) / 1e6 / nf); pyn = yn; pyns = yns; }
         if (frame % 300 == 0) { unsigned wn = 0; uint32_t wq = dm_guest_work_qos(&wn); thread_extended_info_data_t xi; mach_msg_type_number_t xc = THREAD_EXTENDED_INFO_COUNT; int okx = thread_info(pthread_mach_thread_np(pthread_self()), THREAD_EXTENDED_INFO, (thread_info_t)&xi, &xc) == KERN_SUCCESS;
             thread_time_constraint_policy_data_t tp; mach_msg_type_number_t tc = THREAD_TIME_CONSTRAINT_POLICY_COUNT; boolean_t def = 0; int rt_live = thread_policy_get(pthread_mach_thread_np(pthread_self()), THREAD_TIME_CONSTRAINT_POLICY, (thread_policy_t)&tp, &tc, &def) == KERN_SUCCESS && !def;   // def = 1: the real-time policy is not in effect (never set / revoked)
-            LOG("[nvn] thread policy: main thread real-time computation %.2f ms / period %.2f ms, real-time policy %s, current priority %d (base %d, policy %d); %u worker threads QoS %#x; present QoS %#x", g_rt_comp_ms, g_rt_period_ms, rt_live ? "in effect" : "not in effect", okx ? xi.pth_curpri : -1, okx ? xi.pth_priority : -1, okx ? xi.pth_policy : -1, wn, wq, mtl_present_qos()); }
+            LOG("[nvn] thread policy: main thread real-time computation %.2f ms / period %.2f ms, real-time policy %s (declared again %llu times), current priority %d (base %d, policy %d); %u worker threads QoS %#x; present QoS %#x", g_rt_comp_ms, g_rt_period_ms, rt_live ? "in effect" : "not in effect", (unsigned long long)g_rt_redeclared, okx ? xi.pth_curpri : -1, okx ? xi.pth_priority : -1, okx ? xi.pth_policy : -1, wn, wq, mtl_present_qos()); }
         py = cy; pk = ck; pw = cw; }
       pi = ci; pc = cc; pd = dr_; pf = frame; }
     uint64_t up, re, es = mtl_pkg_edge_skips(), fa, pr; mtl_pkg_stats(&up, &re); nvn_dirty_stats(&fa, &pr);
@@ -1808,6 +1811,25 @@ static void rt_comp_tick(uint64_t period_ns) {
     // two frames in 120 near 4.4 ms; declared at 2.5 ms (p90 × 1.25) it stalled about once a second, at 30 fps and at 60; declared above the peak it held 60 fps at the same CPU energy
     double p90 = v[107], comp = fmax(p90 * 1.25, v[119] * 1.1), cap = period_ns * 0.9 / 1e6; if (comp > cap) comp = cap; if (comp < 1) comp = 1;
     if (comp > g_rt_comp_ms * 1.15 || comp < g_rt_comp_ms * 0.85) set_time_constraint_comp(period_ns, (uint64_t)(comp * 1e6));
+}
+// The system takes the policy back from a thread that runs past its declared computation, and nothing declared it again: a loading frame (108 ms) took it on an iPhone 18 Pro Max
+// within the first 300 frames of Ocarina of Time, with DM_RT_COMP=12 fixed, so rt_comp_tick never re-declared either. For the rest of the session the main thread ran as an
+// ordinary thread, at 1.6 GHz for minutes at a time against 3.7 GHz earlier, and Hyrule Field's 1,500-2,600 draws a frame took 14-22 ms to submit (35-50 fps) with the GPU at 11-13 ms.
+// Every 120 frames the policy is read back and declared again (with the computation declared last) when it is no longer in effect. DM_RT_RECHECK=0 turns it off
+static void rt_recheck(uint64_t period_ns) {
+    static int on = -1; if (on < 0) { const char *e = getenv("DM_RT_RECHECK"); on = !(e && !strcmp(e, "0")); }
+    static unsigned n;
+    if (!on || !rt_on() || !period_ns || g_rt_comp_ms <= 0 || ++n % 120) return;
+    thread_time_constraint_policy_data_t tp; mach_msg_type_number_t tc = THREAD_TIME_CONSTRAINT_POLICY_COUNT; boolean_t def = 0;
+    if (thread_policy_get(pthread_mach_thread_np(pthread_self()), THREAD_TIME_CONSTRAINT_POLICY, (thread_policy_t)&tp, &tc, &def) == KERN_SUCCESS && !def) return;   // still in effect
+    static mach_timebase_info_data_t tb; if (!tb.denom) mach_timebase_info(&tb);
+    uint64_t comp_ns = (uint64_t)(g_rt_comp_ms * 1e6);
+    thread_time_constraint_policy_data_t p = {
+        .period = (uint32_t)(period_ns * tb.denom / tb.numer), .computation = (uint32_t)(comp_ns * tb.denom / tb.numer),
+        .constraint = (uint32_t)(period_ns * tb.denom / tb.numer), .preemptible = 1};
+    kern_return_t kr = thread_policy_set(pthread_mach_thread_np(pthread_self()), THREAD_TIME_CONSTRAINT_POLICY, (thread_policy_t)&p, THREAD_TIME_CONSTRAINT_POLICY_COUNT);
+    if (kr == KERN_SUCCESS) g_rt_redeclared++;
+    if (g_rt_redeclared <= 4 || kr != KERN_SUCCESS) LOG("[nvn] present thread time-constraint policy was taken back by the system: declared again (computation %.3f ms) %s (%llu so far)", g_rt_comp_ms, kr == KERN_SUCCESS ? "" : "failed", (unsigned long long)g_rt_redeclared);
 }
 static void sleep_until_ns(uint64_t dl) {   // absolute time on the monotonic clock
     static mach_timebase_info_data_t tb; if (!tb.denom) mach_timebase_info(&tb);
