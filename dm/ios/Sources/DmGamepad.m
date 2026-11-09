@@ -2,8 +2,8 @@
 //   Two layouts, three in handheld mode, picked in the in-game menu (GameMenu.swift) that the menu button at the top centre (a gear) opens; the choice is kept in NSUserDefaults (each game is its own app, so per game); the first launch uses the game profile's pad_layout (DM_GAME_PAD_LAYOUT).
 //   The menu button stays while a physical controller is connected, so the menu is there in every layout and with every controller.
 //   Native (native, layout 3): a mobile game's layout in very transparent glass, after the mock-up the player chose: a floating left stick (a thumb on the left half holds it,
-//     centred where it lands, or on the drawn ring), the camera (right stick) on any touch of the right half no key takes, and round icon keys whose button letter sits in a small
-//     chip (round for A B X Y + −, square for the shoulders R and ZL): B a sword, A a tap, R a shield, ZL a target, X a jump (two up arrows), Y a grid, + a menu, − a map; the menu button (…) at the top right.
+//     centred where it lands, or on the drawn ring), the camera (right stick) on any touch of the right half no key takes, and round icon keys, in the colour theme, whose button letter sits in a small
+//     chip (round for A B X Y + −, square for the shoulders R and ZL): Y a sword, A an action, B back, R a shield, ZL Navi, ZR an item, X a jump (two up arrows), + a menu, − a map; the menu button (…) at the top right.
 //     A small D-pad above the stick. No L, ZR, L3 or R3 (the 3D layout has them). Drawn with shape and gradient layers only (no live blur), so it costs the GPU nothing over the picture.
 //   Tap (touch): no control but the menu button, every other touch goes to the game's local touch viewport; offered only while the game is in handheld mode, the only one in which it reads the touch screen (Balatro, played by touch).
 //   2D (simple): top corners ZL above L (one column), ZR above R likewise, teardrops with the tip toward the screen corner; − and + side by side at the top centre; the left stick in the bottom-left corner (fixed ring, tilt measured from the ring centre, small dead zone);
@@ -137,7 +137,7 @@ static const int k_btns[] = {B_ZL, B_L, B_ZR, B_R, B_MINUS, B_PLUS, B_LS, B_RS};
 static NSString *const k_layout_key = @"DmPadLayout";   // NSUserDefaults: 0 = 2D, 1 = 3D, 2 = Tap, 3 = Native (DM_GAME_PAD_LAYOUT's numbers)
 static NSString *const k_native_key = @"DmPadNativeOffered";   // a profile that starts in Native switches to it once, over a layout saved before Native existed
 // Native layout (in points of an 874 x 402 landscape screen, scaled by gu; x from the corner rectangle's edges, y from its top or bottom): centre, radius
-static const int k_nat[] = {B_B, B_A, B_R, B_ZL, B_X, B_Y, B_PLUS, B_MINUS, B_LEFT, B_UP, B_RIGHT, B_DOWN};
+static const int k_nat[] = {B_B, B_A, B_R, B_ZL, B_ZR, B_X, B_Y, B_PLUS, B_MINUS, B_LEFT, B_UP, B_RIGHT, B_DOWN};
 static const CGFloat N_RING_R = 62, N_KNOB_R = 27, N_STICK_X = 120, N_STICK_Y = 105, N_MENU_X = 80, N_TOP_Y = 32, N_TOP_R = 18;
 int dm_opmode(void);   // hle_oe.c: 0 = handheld
 
@@ -222,6 +222,7 @@ static CATextLayer *label(CALayer *parent, NSString *s) {
 // Each control is a disc that lets the picture through: a nearly clear base (its fill turns a light blue while pressed), a soft light from the top, a rim brighter at the upper
 // left, a small highlight near the top, a white icon and the button's letter in a chip. Shape and gradient layers only: no backdrop blur, which would sample the picture every frame
 static UIColor *g_glassIdle, *g_glassOn;
+static UIColor *nat_fill(int b, BOOL on) { return pad_theme() == 2 ? (on ? g_glassOn : g_glassIdle) : (on ? k_kon[b] : k_kidle[b]); }   // a Mobile key follows the colour theme
 static UIFont *rounded(CGFloat size) {
     UIFontDescriptor *d = [[UIFont systemFontOfSize:size weight:UIFontWeightBold].fontDescriptor fontDescriptorWithDesign:UIFontDescriptorSystemDesignRounded];
     return d ? [UIFont fontWithDescriptor:d size:size] : [UIFont systemFontOfSize:size weight:UIFontWeightBold];
@@ -397,12 +398,13 @@ static CGPoint side(CGRect s, int right, CGFloat dx, CGFloat y) { return CGPoint
     CGRect s = self.corner; CGFloat g = self.gu, R = CGRectGetMaxX(s), L = CGRectGetMinX(s), T = CGRectGetMinY(s), Bt = CGRectGetMaxY(s);
     CGFloat x = 0, y = 0, rr = 0;
     switch (b) {
-        case B_B: x = R - 92 * g; y = Bt - 88 * g; rr = 44; break;
-        case B_A: x = R - 180 * g; y = Bt - 74 * g; rr = 30; break;
-        case B_R: x = R - 164 * g; y = Bt - 154 * g; rr = 25; break;
-        case B_ZL: x = R - 106 * g; y = Bt - 188 * g; rr = 25; break;
-        case B_X: x = R - 40 * g; y = Bt - 172 * g; rr = 23; break;
-        case B_Y: x = R - 40 * g; y = Bt - 238 * g; rr = 21; break;
+        case B_Y: x = R - 92 * g; y = Bt - 88 * g; rr = 44; break;
+        case B_A: x = R - 192 * g; y = Bt - 70 * g; rr = 30; break;
+        case B_B: x = R - 30 * g; y = Bt - 30 * g; rr = 23; break;
+        case B_X: x = R - 52 * g; y = Bt - 176 * g; rr = 27; break;
+        case B_ZL: x = R - 136 * g; y = Bt - 190 * g; rr = 26; break;
+        case B_ZR: x = R - 204 * g; y = Bt - 150 * g; rr = 26; break;
+        case B_R: x = R - 52 * g; y = Bt - 244 * g; rr = 24; break;
         case B_PLUS: x = L + 34 * g; y = T + N_TOP_Y * g; rr = N_TOP_R; break;
         case B_UP: x = L + N_STICK_X * g; y = Bt - 266 * g; rr = 17; break;
         case B_DOWN: x = L + N_STICK_X * g; y = Bt - 202 * g; rr = 17; break;
@@ -720,12 +722,12 @@ static void placeLabel(CATextLayer *t, CGPoint c, CGFloat fs) {
     CGFloat g = self.gu;
     _nring = glassDisc(N_RING_R * g, NULL); _nring.position = self.natStickHome; [_nat addSublayer:_nring];
     CAShapeLayer *kb = nil; _nknob = glassDisc(N_KNOB_R * g, &kb); _nknobBase = kb; _nknob.position = self.natStickHome; [_nat addSublayer:_nknob];
-    static NSString *const sym[B_N] = { [B_A] = @"hand.tap.fill", [B_X] = @"chevron.up.2", [B_Y] = @"square.grid.2x2", [B_R] = @"shield.lefthalf.filled", [B_ZL] = @"scope", [B_PLUS] = @"line.3.horizontal", [B_MINUS] = @"map", [B_LEFT] = @"arrowtriangle.left.fill", [B_UP] = @"arrowtriangle.up.fill", [B_RIGHT] = @"arrowtriangle.right.fill", [B_DOWN] = @"arrowtriangle.down.fill" };
-    static NSString *const chip[B_N] = { [B_A] = @"A", [B_B] = @"B", [B_X] = @"X", [B_Y] = @"Y", [B_R] = @"R", [B_ZL] = @"ZL", [B_PLUS] = @"+", [B_MINUS] = @"\u2212" };
+    static NSString *const sym[B_N] = { [B_A] = @"arrow.2.circlepath", [B_B] = @"arrow.uturn.backward", [B_X] = @"chevron.up.2", [B_R] = @"shield.lefthalf.filled", [B_ZL] = @"sparkles", [B_ZR] = @"scope", [B_PLUS] = @"line.3.horizontal", [B_MINUS] = @"map", [B_LEFT] = @"arrowtriangle.left.fill", [B_UP] = @"arrowtriangle.up.fill", [B_RIGHT] = @"arrowtriangle.right.fill", [B_DOWN] = @"arrowtriangle.down.fill" };
+    static NSString *const chip[B_N] = { [B_A] = @"A", [B_B] = @"B", [B_X] = @"X", [B_Y] = @"Y", [B_R] = @"R", [B_ZL] = @"ZL", [B_ZR] = @"ZR", [B_PLUS] = @"+", [B_MINUS] = @"\u2212" };
     for (int i = 0; i < (int)(sizeof k_nat / sizeof *k_nat); i++) { int b = k_nat[i]; CGPoint c; CGFloat r; [self nat:b centre:&c radius:&r];
-        CAShapeLayer *base = nil; CALayer *d = glassDisc(r, &base); d.position = c;
-        if (b == B_B) glassSword(d, 24 * g); else glassSymbol(d, sym[b], (b == B_A ? 17 : b == B_PLUS || b == B_MINUS ? 11 : b >= B_LEFT ? 10 : b == B_X ? 14 : b == B_Y ? 12 : 15) * g, scale);
-        if (b < B_LEFT) glassChip(d, chip[b], b == B_R || b == B_ZL, scale);
+        CAShapeLayer *base = nil; CALayer *d = glassDisc(r, &base); d.position = c; base.fillColor = nat_fill(b, NO).CGColor;
+        if (b == B_Y) glassSword(d, 24 * g); else glassSymbol(d, sym[b], (b == B_A ? 17 : b == B_PLUS || b == B_MINUS ? 11 : b >= B_LEFT ? 10 : b == B_X ? 14 : b == B_Y ? 12 : 15) * g, scale);
+        if (b < B_LEFT) glassChip(d, chip[b], b == B_R || b == B_ZL || b == B_ZR, scale);
         [_nat addSublayer:d]; _nk[b] = d; _nbase[b] = base;
     }
 }
@@ -739,9 +741,9 @@ static void placeLabel(CATextLayer *t, CGPoint c, CGFloat fs) {
     _knob.position = CGPointMake(h.x + o.x, h.y + o.y); _knob.fillColor = (_stick[0] ? k_knobOn : k_knobIdle).CGColor;
     if (_native) {   // pressed: the base turns light blue and the disc grows a little; the stick's ring sits where it is held, its knob follows the thumb
         for (int i = 0; i < (int)(sizeof k_nat / sizeof *k_nat); i++) { int b = k_nat[i]; BOOL on = (all >> b) & 1;
-            _nbase[b].fillColor = (on ? g_glassOn : g_glassIdle).CGColor; _nk[b].transform = on ? CATransform3DMakeScale(1.06, 1.06, 1) : CATransform3DIdentity; }
+            _nbase[b].fillColor = nat_fill(b, on).CGColor; _nk[b].transform = on ? CATransform3DMakeScale(1.06, 1.06, 1) : CATransform3DIdentity; }
         CGPoint c = [self stickCentre:0]; _nring.position = c; _nknob.position = CGPointMake(c.x + o.x, c.y + o.y);
-        _nknobBase.fillColor = (_stick[0] ? g_glassOn : g_glassIdle).CGColor;
+        _nknobBase.fillColor = (pad_theme() == 2 ? (_stick[0] ? g_glassOn : g_glassIdle) : (_stick[0] ? k_knobOn : k_knobIdle)).CGColor;
     }
     [CATransaction commit];
 }
