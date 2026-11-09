@@ -10,7 +10,7 @@ No game files, keys or anything built from a dump are here. The pipeline rows in
 - **Prewarm list:** Ocarina's list takes the rows recorded on the iPhone in Kokiri Forest, Hyrule Field, Castle Town and Hyrule Castle, plus one mesh pipeline nxnative's seed rows lacked.
 - **Memory:** shared textures no live object uses are retired under memory pressure, fixing the freeze after the talk with Saria (PR #1455). Render targets use nxnative's own recycling (7f502220); the earlier shared placement heap (PR #1453) is gone, as nxnative found it can corrupt the picture.
 - **Game speed:** Ocarina's frame ratio is never below the measured frame time (from PR #1543, after gunvalk's finding in Lichii PR #216), so the game keeps real speed below 60 fps with `DM_FPS_HOLD off`.
-- **Frame pacing on iOS:** the system takes the main thread's real-time scheduling back after a long loading frame, and nothing asked for it again: the game then ran on slower cores (1.6 GHz instead of 3.7) and Hyrule Field fell to 35-50 fps. The policy is now read back every 120 frames and asked for again when it was taken (`DM_RT_RECHECK=0` turns it off).
+- **Frame pacing on iOS:** the thread that presents the game's frames runs user-interactive whatever its priority. Under `DM_QOS_MAP` it was user-initiated, and iOS kept it on the efficiency cores (1.6 GHz instead of 3.7), so Hyrule Field fell to 41-55 fps with the GPU half idle (`DM_FRAME_QOS=0` turns it off).
 - **iOS:** `Documents/res_overlay` is read as a game file overlay (HookLink's resolution file). Ocarina gets a pipeline archive for `g19p`.
 
 ## Credits
