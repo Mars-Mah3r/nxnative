@@ -11,8 +11,11 @@ No game files, keys or anything built from a dump are here. The pipeline rows in
 - **Memory:** shared textures no live object uses are retired under memory pressure, fixing the freeze after the talk with Saria (PR #1455). Render targets use nxnative's own recycling (7f502220); the earlier shared placement heap (PR #1453) is gone, as nxnative found it can corrupt the picture.
 - **Game speed:** Ocarina's frame ratio is never below the measured frame time (from PR #1543, after gunvalk's finding in Lichii PR #216), so the game keeps real speed below 60 fps with `DM_FPS_HOLD off`.
 - **Frame pacing on iOS:** the thread that presents the game's frames runs user-interactive whatever its priority. Under `DM_QOS_MAP` it was user-initiated, and iOS kept it on the efficiency cores (1.6 GHz instead of 3.7), so Hyrule Field fell to 41-55 fps with the GPU half idle (`DM_FRAME_QOS=0` turns it off).
+- **Touch controls:** a Glass colour theme on every layout, and a Mobile layout (floating stick, camera on the right half, glass keys, a D-pad), from the kid-with-sword fork.
+- **Wide view:** a launcher setting that makes the output and render sizes follow a screen wider than 16:9 at each start (`DM_WIDE_VIEW`), from nxnative PR #1460's sites.
+- **Submission:** up to 32 command allocators in flight (`DM_NVN_ALLOC_CAP`); side-by-side compute dispatches (`DM_NVN_DISPATCH_OVERLAP`) and lossy render targets (`DM_NVN_RT_LOSSY`) are off by default.
 - **iOS:** `Documents/res_overlay` is read as a game file overlay (HookLink's resolution file). Ocarina gets a pipeline archive for `g19p`.
 
 ## Credits
 
-nxnative by seedds and its contributors; the PR authors above; gunvalk for the frame-step finding. nxnative's MIT license (`LICENSE`) applies to this branch.
+nxnative by seedds and its contributors; the PR authors above; the kid-with-sword fork (ednofedulo, cheemu21 and contributors, MIT); vladbondarenko97 for the wide-view sites; gunvalk for the frame-step finding. nxnative's MIT license (`LICENSE`) applies to this branch.

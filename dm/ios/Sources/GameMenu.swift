@@ -14,7 +14,7 @@ public func dmGameMenu() -> UnsafeMutableRawPointer {
 }
 
 private func gameMenuItems() -> [UIMenuElement] {
-    let names = ["2D", "3D", "Tap", "Native"]
+    let names = ["2D", "3D", "Tap", "Mobile"]
     let layouts = (0..<4).filter { dm_pad_layout_offered(Int32($0)) }.map { l in
         UIAction(title: names[l], state: dm_pad_layout() == l ? .on : .off) { _ in dm_pad_layout_set(Int32(l)) }
     }

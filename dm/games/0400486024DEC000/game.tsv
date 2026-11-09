@@ -11,6 +11,8 @@ name	The Legend of Zelda: Ocarina of Time
 ipa	ZeldaOcarinaOfTime.ipa
 app_category	public.app-category.adventure-games
 pad_layout	full
+# The touch controls' Glass colours, on every layout (DmGamepad.m theme_init)
+pad_theme	glass
 
 # ---- Versions ----
 build	v131072	v131072	main=e0f3ccfaf50065ae4ea01eb5aeb13b1a	subsdk0=b0110087a7b339ef74588d3bd0b4dd5d	sdk=1643a838814f9c10c696f930ed681e7f

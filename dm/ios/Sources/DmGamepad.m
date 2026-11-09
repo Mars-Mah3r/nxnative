@@ -4,7 +4,7 @@
 //   Native (native, layout 3): a mobile game's layout in very transparent glass, after the mock-up the player chose: a floating left stick (a thumb on the left half holds it,
 //     centred where it lands, or on the drawn ring), the camera (right stick) on any touch of the right half no key takes, and round icon keys whose button letter sits in a small
 //     chip (round for A B X Y + −, square for the shoulders R and ZL): B a sword, A a tap, R a shield, ZL a target, X a jump (two up arrows), Y a grid, + a menu, − a map; the menu button (…) at the top right.
-//     No D-pad, L, ZR, L3 or R3 (the 3D layout has them). Drawn with shape and gradient layers only (no live blur), so it costs the GPU nothing over the picture.
+//     A small D-pad above the stick. No L, ZR, L3 or R3 (the 3D layout has them). Drawn with shape and gradient layers only (no live blur), so it costs the GPU nothing over the picture.
 //   Tap (touch): no control but the menu button, every other touch goes to the game's local touch viewport; offered only while the game is in handheld mode, the only one in which it reads the touch screen (Balatro, played by touch).
 //   2D (simple): top corners ZL above L (one column), ZR above R likewise, teardrops with the tip toward the screen corner; − and + side by side at the top centre; the left stick in the bottom-left corner (fixed ring, tilt measured from the ring centre, small dead zone);
 //     the A (right) B (bottom) X (top) Y (left) diamond in the bottom-right corner, sliding a finger between keys switches keys. Each bottom corner holds a single control, so it sits close in (reaching halfway into the side safe-area inset).
@@ -137,7 +137,7 @@ static const int k_btns[] = {B_ZL, B_L, B_ZR, B_R, B_MINUS, B_PLUS, B_LS, B_RS};
 static NSString *const k_layout_key = @"DmPadLayout";   // NSUserDefaults: 0 = 2D, 1 = 3D, 2 = Tap, 3 = Native (DM_GAME_PAD_LAYOUT's numbers)
 static NSString *const k_native_key = @"DmPadNativeOffered";   // a profile that starts in Native switches to it once, over a layout saved before Native existed
 // Native layout (in points of an 874 x 402 landscape screen, scaled by gu; x from the corner rectangle's edges, y from its top or bottom): centre, radius
-static const int k_nat[] = {B_B, B_A, B_R, B_ZL, B_X, B_Y, B_PLUS, B_MINUS};
+static const int k_nat[] = {B_B, B_A, B_R, B_ZL, B_X, B_Y, B_PLUS, B_MINUS, B_LEFT, B_UP, B_RIGHT, B_DOWN};
 static const CGFloat N_RING_R = 62, N_KNOB_R = 27, N_STICK_X = 120, N_STICK_Y = 105, N_MENU_X = 80, N_TOP_Y = 32, N_TOP_R = 18;
 int dm_opmode(void);   // hle_oe.c: 0 = handheld
 
@@ -184,10 +184,17 @@ static UIColor *k_idle, *k_on, *k_line, *k_ringFill, *k_text, *k_textOn;
 // bronze D-pad, gold rims, cream labels), with no game artwork. Every colour keeps its own low opacity, as above, so the picture shows through
 static UIColor *k_kidle[B_N], *k_kon[B_N], *k_kline[B_N], *k_ktext[B_N], *k_ktextOn[B_N], *k_knobIdle, *k_knobOn, *k_knobLine, *k_menuFill, *k_menuLine;
 static UIColor *rgba(uint32_t rgb, CGFloat a) { return [UIColor colorWithRed:((rgb >> 16) & 255) / 255.0 green:((rgb >> 8) & 255) / 255.0 blue:(rgb & 255) / 255.0 alpha:a]; }
-static int pad_theme(void) { const char *e = getenv("DM_PAD_THEME"); return e && *e ? atoi(e) : DM_GAME_PAD_THEME; }   // 0 Classic, 1 Forest
+static int pad_theme(void) { const char *e = getenv("DM_PAD_THEME"); return e && *e ? atoi(e) : DM_GAME_PAD_THEME; }   // 0 Classic, 1 Forest, 2 Glass
 static void theme_init(void) {
     for (int b = 0; b < B_N; b++) { k_kidle[b] = k_idle; k_kon[b] = k_on; k_kline[b] = k_line; k_ktext[b] = k_text; k_ktextOn[b] = k_textOn; }
     k_knobIdle = k_idle; k_knobOn = k_on; k_knobLine = k_line; k_menuFill = k_idle; k_menuLine = k_line;
+    if (pad_theme() == 2) {   // Glass: nearly clear white keys, a light-blue press, a bright thin rim (every layout)
+        UIColor *rim = [UIColor colorWithWhite:1 alpha:0.55], *white = [UIColor colorWithWhite:1 alpha:0.95], *press = rgba(0x8cd9ff, 0.32);
+        for (int b = 0; b < B_N; b++) { k_kidle[b] = [UIColor colorWithWhite:1 alpha:0.06]; k_kon[b] = press; k_kline[b] = rim; k_ktext[b] = white; k_ktextOn[b] = white; }
+        k_ringFill = [UIColor colorWithWhite:1 alpha:0.03]; k_knobIdle = [UIColor colorWithWhite:1 alpha:0.08]; k_knobOn = press; k_knobLine = rim;
+        k_menuFill = [UIColor colorWithWhite:1 alpha:0.06]; k_menuLine = rim; k_text = white;
+        return;
+    }
     if (pad_theme() != 1) return;
     const uint32_t gold = 0xd9b45a, cream = 0xf6ecd2, forest = 0x1f4d2b, night = 0x0c1f12;
     static const uint32_t fill[B_N] = {   // A B X Y L3 R3 L R ZL ZR + − left up right down
@@ -397,6 +404,10 @@ static CGPoint side(CGRect s, int right, CGFloat dx, CGFloat y) { return CGPoint
         case B_X: x = R - 40 * g; y = Bt - 172 * g; rr = 23; break;
         case B_Y: x = R - 40 * g; y = Bt - 238 * g; rr = 21; break;
         case B_PLUS: x = L + 34 * g; y = T + N_TOP_Y * g; rr = N_TOP_R; break;
+        case B_UP: x = L + N_STICK_X * g; y = Bt - 266 * g; rr = 17; break;
+        case B_DOWN: x = L + N_STICK_X * g; y = Bt - 202 * g; rr = 17; break;
+        case B_LEFT: x = L + (N_STICK_X - 32) * g; y = Bt - 234 * g; rr = 17; break;
+        case B_RIGHT: x = L + (N_STICK_X + 32) * g; y = Bt - 234 * g; rr = 17; break;
         default: x = R - 34 * g; y = T + N_TOP_Y * g; rr = N_TOP_R; break;   // −
     }
     *c = CGPointMake(x, y); *r = rr * g;
@@ -709,12 +720,12 @@ static void placeLabel(CATextLayer *t, CGPoint c, CGFloat fs) {
     CGFloat g = self.gu;
     _nring = glassDisc(N_RING_R * g, NULL); _nring.position = self.natStickHome; [_nat addSublayer:_nring];
     CAShapeLayer *kb = nil; _nknob = glassDisc(N_KNOB_R * g, &kb); _nknobBase = kb; _nknob.position = self.natStickHome; [_nat addSublayer:_nknob];
-    static NSString *const sym[B_N] = { [B_A] = @"hand.tap.fill", [B_X] = @"chevron.up.2", [B_Y] = @"square.grid.2x2", [B_R] = @"shield.lefthalf.filled", [B_ZL] = @"scope", [B_PLUS] = @"line.3.horizontal", [B_MINUS] = @"map" };
+    static NSString *const sym[B_N] = { [B_A] = @"hand.tap.fill", [B_X] = @"chevron.up.2", [B_Y] = @"square.grid.2x2", [B_R] = @"shield.lefthalf.filled", [B_ZL] = @"scope", [B_PLUS] = @"line.3.horizontal", [B_MINUS] = @"map", [B_LEFT] = @"arrowtriangle.left.fill", [B_UP] = @"arrowtriangle.up.fill", [B_RIGHT] = @"arrowtriangle.right.fill", [B_DOWN] = @"arrowtriangle.down.fill" };
     static NSString *const chip[B_N] = { [B_A] = @"A", [B_B] = @"B", [B_X] = @"X", [B_Y] = @"Y", [B_R] = @"R", [B_ZL] = @"ZL", [B_PLUS] = @"+", [B_MINUS] = @"\u2212" };
     for (int i = 0; i < (int)(sizeof k_nat / sizeof *k_nat); i++) { int b = k_nat[i]; CGPoint c; CGFloat r; [self nat:b centre:&c radius:&r];
         CAShapeLayer *base = nil; CALayer *d = glassDisc(r, &base); d.position = c;
-        if (b == B_B) glassSword(d, 24 * g); else glassSymbol(d, sym[b], (b == B_A ? 17 : b == B_PLUS || b == B_MINUS ? 11 : b == B_X ? 14 : b == B_Y ? 12 : 15) * g, scale);
-        glassChip(d, chip[b], b == B_R || b == B_ZL, scale);
+        if (b == B_B) glassSword(d, 24 * g); else glassSymbol(d, sym[b], (b == B_A ? 17 : b == B_PLUS || b == B_MINUS ? 11 : b >= B_LEFT ? 10 : b == B_X ? 14 : b == B_Y ? 12 : 15) * g, scale);
+        if (b < B_LEFT) glassChip(d, chip[b], b == B_R || b == B_ZL, scale);
         [_nat addSublayer:d]; _nk[b] = d; _nbase[b] = base;
     }
 }
