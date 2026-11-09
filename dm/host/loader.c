@@ -332,6 +332,7 @@ void dm_fps_state_apply(void) {
       if (wv && !strcmp(wv, "1") && wa && wend != wa && !*wend && wr >= 1.8f && wr <= 2.6f) {
           uint32_t w1 = (uint32_t)(1440.0f * wr / 16.0f + 0.5f) * 16, w2 = (uint32_t)(1080.0f * wr / 16.0f + 0.5f) * 16, q = (uint32_t)(wr * 65536.0f + 0.5f); float wf = (float)w1;
           memcpy(dm_fps_state + 0x100, &w1, 4); memcpy(dm_fps_state + 0x104, &w2, 4); memcpy(dm_fps_state + 0x108, &wf, 4); memcpy(dm_fps_state + 0x10c, &q, 4);
+          extern void mtl_present_screen(uint32_t w, uint32_t h); mtl_present_screen(w1, 1440);   // the picture's shape for a texture that follows it (nvn_mtl.m present_shape); without it the view is laid out 16:9
           LOG("%s: wide view: %.3f:1, output %ux1440, handheld %ux1080 (DM_WIDE_VIEW)", g_fps_mod, wr, w1, w2); } }
     // Screen shape: DM_SCREEN_ASPECT, the screen's width / height between 1.3 and 1.77, makes the builds with screen-shape stubs
     // (Breath of the Wild 1.9.0's patches.py) render that shape: the output keeps its width (1920) and takes the height that gives the ratio, a multiple of 48 so the
