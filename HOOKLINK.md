@@ -7,9 +7,10 @@ No game files, keys or anything built from a dump are here. The pipeline rows in
 ## Changes over nxnative
 
 - **Pipelines:** a hybrid draw remembers pipelines the archive had no base for, instead of searching every archive file on each draw of each frame. Demanded builds get at least 3 queues, and their table is indexed by key. Each pipeline a draw stands in for goes into `pso_user.tsv` when first asked for, so the next start's prepare step builds it (`DM_PSO_DEMAND_RECORD=0`: only once built). `DM_PSO_BG_QUEUES` and `DM_PSO_BG_QOS` tune the background builds.
-- **Prewarm list:** Ocarina's list takes the rows recorded on the iPhone in Kokiri Forest, Hyrule Field, Castle Town and Hyrule Castle.
-- **Memory:** a GPU-only pool's render targets share one placement heap (PR #1453), and shared textures no live object uses are retired under memory pressure, fixing the freeze after the talk with Saria (PR #1455).
+- **Prewarm list:** Ocarina's list takes the rows recorded on the iPhone in Kokiri Forest, Hyrule Field, Castle Town and Hyrule Castle, plus one mesh pipeline nxnative's seed rows lacked.
+- **Memory:** shared textures no live object uses are retired under memory pressure, fixing the freeze after the talk with Saria (PR #1455). Render targets use nxnative's own recycling (7f502220); the earlier shared placement heap (PR #1453) is gone, as nxnative found it can corrupt the picture.
 - **Game speed:** Ocarina's frame ratio is never below the measured frame time (from PR #1543, after gunvalk's finding in Lichii PR #216), so the game keeps real speed below 60 fps with `DM_FPS_HOLD off`.
+- **Frame pacing on iOS:** the system takes the main thread's real-time scheduling back after a long loading frame, and nothing asked for it again: the game then ran on slower cores (1.6 GHz instead of 3.7) and Hyrule Field fell to 35-50 fps. The policy is now read back every 120 frames and asked for again when it was taken (`DM_RT_RECHECK=0` turns it off).
 - **iOS:** `Documents/res_overlay` is read as a game file overlay (HookLink's resolution file). Ocarina gets a pipeline archive for `g19p`.
 
 ## Credits
