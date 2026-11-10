@@ -12,7 +12,7 @@ No game files, keys or anything built from a dump are here. The pipeline rows in
 - **Game speed:** Ocarina's frame ratio is never below the measured frame time (from PR #1543, after gunvalk's finding in Lichii PR #216), so the game keeps real speed below 60 fps with `DM_FPS_HOLD off`.
 - **Frame pacing on iOS:** the thread that presents the game's frames runs user-interactive whatever its priority. Under `DM_QOS_MAP` it was user-initiated, and iOS kept it on the efficiency cores (1.6 GHz instead of 3.7), so Hyrule Field fell to 41-55 fps with the GPU half idle (`DM_FRAME_QOS=0` turns it off).
 - **Touch controls:** a Glass colour theme on every layout, and a Mobile layout (floating stick, camera on the right half, glass keys, a D-pad), from the kid-with-sword fork.
-- **Wide view:** a launcher setting that makes the output and render sizes follow a screen wider than 16:9 at each start (`DM_WIDE_VIEW`), from nxnative PR #1460's sites.
+- **Wide view:** a launcher setting that makes the output and render sizes follow a screen wider than 16:9 at each start (`DM_WIDE_VIEW`), from nxnative PR #1460's sites. A 16:9 game camera (sead::PerspectiveProjection, main+0x3485cc0) takes the picture's ratio, so the view shows more at the sides instead of stretching; the near 1 / far 10000 projection stays 16:9.
 - **Submission:** up to 32 command allocators in flight (`DM_NVN_ALLOC_CAP`); side-by-side compute dispatches (`DM_NVN_DISPATCH_OVERLAP`) and lossy render targets (`DM_NVN_RT_LOSSY`) are off by default.
 - **iOS:** `Documents/res_overlay` is read as a game file overlay (HookLink's resolution file). Ocarina gets a pipeline archive for `g19p`.
 
