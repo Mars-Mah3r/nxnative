@@ -49,6 +49,7 @@ class Ctx:
         self.sites[offset] = original
 
     def put(self, offset, words, reason):
+        if offset + 4 * len(words) > 0xa00000: return   # HookLink's wide view sites (main+0xecbc80 and up) lie past the mapped code: not part of the frame step
         self.machine.mem_write(BASE + offset, b''.join(struct.pack('<I', w) for w in words))
 
 
