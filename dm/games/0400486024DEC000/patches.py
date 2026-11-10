@@ -138,6 +138,16 @@ def wide_view(ctx):
         fs_site(site, orig.to_bytes(4, 'little').hex())
         c = (0x130 + 4 * k) // 4
         start = here(); emit(ADRP(16, here(), FS_STATE_OFF))
+        if site in (0x4C533C, 0x2E1BB6C, 0x2E1C7D0):
+            # The game's cameras' own aspect parameter (+0x140, copied from +0xc8): the phone's log showed main+0x4c533c storing it every frame and never 16:9, so whatever it holds is
+            # scaled by the picture's ratio over 16:9 (state +0x114, float; 0 = off) and the value it came with is kept at +0x128 for the log. s1 is written or a call follows at each site
+            for w in (0xB9400211 | c << 10, 0x11000631, 0xB9000211 | c << 10, 0xBD012A00,      # this site's passes += 1; +0x128 = the aspect as the game set it
+                      0xB9411611, 0x34000011 | 6 << 5, 0x1E270221, 0x1E210800,                  # w17 = the scale, 0: store as is; s1 = scale; s0 *= s1
+                      0xB9412611, 0x11000631, 0xB9012611, orig):                                 # widened += 1; the game's store
+                emit(w)
+            emit(B(here(), site + 4))
+            fs_put(site, [B(site, start)], f'wide view: the game camera\'s aspect parameter is scaled by the picture\'s ratio over 16:9 (site {k})')
+            continue
         for w in (0xB9400211 | c << 10, 0x11000631, 0xB9000211 | c << 10,                    # this site's passes += 1
                   0x1E260011 | n << 5, 0x52800010 | 0x8E37 << 5, 0x72A00010 | 0x3FE3 << 5,      # w17 = the aspect's bits; w16 = 16:9's bits - 2
                   0x4B100231, 0x53027E31, 0x35000011 | 8 << 5):                                  # (w17 - w16) >> 2 != 0: not 16:9, store as is
