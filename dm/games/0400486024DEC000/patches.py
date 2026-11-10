@@ -127,6 +127,27 @@ def wide_view(ctx):
         emit(w)
     emit(B(here(), site + 4))
     fs_put(site, [B(site, start)], 'wide view: a 16:9 camera takes the picture\'s ratio (the sides show more, nothing stretched)')
+    # The game's code holds copies of that matrix code (getProjectionMatrix main+0x23b910 checks the vtable slot and builds it in place), so the stub above was never reached: the phone's log
+    # counted 0 projections in 1,200 frames. The ratio is changed where the game sets it instead: each store of a perspective projection's aspect (+0xb0, with its changed flag +8) whose value is
+    # 16:9 (within 2 ulps of 1920/1080) stores the picture's ratio when wide view is on. Viewport ratios of the camera list (main+0x3b50988, +0x3b50b50, +0x28e72a4), sead's set (main+0xea4b20, the
+    # aspect in s8) and constructor (main+0x3485c64, s3), and the game's cameras' own parameter (+0x140: main+0x4c533c, +0x2e1bb6c, +0x2e1c7d0). x16 and x17 are dead at each site (a call or a
+    # write follows) and the test is cbnz, as two sites carry live flags. Each site counts its passes at state +0x130 + 4 * index and the widened ones at +0x124, for the log (hle_nvn.c)
+    for k, (site, orig, n) in enumerate(((0x3485c64, 0xBD00B003, 3), (0xEA4B20, 0x2D15A260, 8), (0x4C533C, 0xBD00B280, 0), (0x653BD4, 0xBD00B100, 0), (0x6545F4, 0xBD00B340, 0),
+                                         (0x28E72A4, 0xBD00B100, 0), (0x2DD7164, 0xBD00B2C0, 0), (0x2E1BB6C, 0xBD00B2E0, 0), (0x2E1C7D0, 0xBD00B2A0, 0), (0x3B50988, 0xBD00B000, 0),
+                                         (0x3B50B50, 0xBD00B300, 0))):
+        fs_site(site, orig.to_bytes(4, 'little').hex())
+        c = (0x130 + 4 * k) // 4
+        start = here(); emit(ADRP(16, here(), FS_STATE_OFF))
+        for w in (0xB9400211 | c << 10, 0x11000631, 0xB9000211 | c << 10,                    # this site's passes += 1
+                  0x1E260011 | n << 5, 0x52800010 | 0x8E37 << 5, 0x72A00010 | 0x3FE3 << 5,      # w17 = the aspect's bits; w16 = 16:9's bits - 2
+                  0x4B100231, 0x53027E31, 0x35000011 | 8 << 5):                                  # (w17 - w16) >> 2 != 0: not 16:9, store as is
+            emit(w)
+        emit(ADRP(16, here(), FS_STATE_OFF))
+        for w in (0xB9411211, 0x34000011 | 5 << 5, 0x1E270220 | n,                              # ratio (+0x110), 0: store as is; s<n> = ratio
+                  0xB9412611, 0x11000631, 0xB9012611, orig):                                     # widened += 1; the game's store
+            emit(w)
+        emit(B(here(), site + 4))
+        fs_put(site, [B(site, start)], f'wide view: a 16:9 camera aspect set here takes the picture\'s ratio (site {k})')
 
 MATCH_FRAME_STEP = {'main': [
     {'name': 'frame ratio from the host\'s step', 'size': 0x9b4, 'fingerprints': ['6ae2aff5344d14568e4dbaf93455e2d8278384bf892ed6c6eca87fef98fbcd1d'], 'stub': frame_step,   # v131072 main+0x6e6be0
