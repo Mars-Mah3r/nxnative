@@ -5136,7 +5136,7 @@ static void mirror_readback(const tex_t *t, id<MTLTexture> d, unsigned level, un
 // texture; what the game reads or copies after waiting for the GPU is the drawing. A texture the host uploads from its storage has its own readback (tex_storage_dst, mirror_readback).
 // DM_NVN_GPU_STORAGE=0 turns the stores off (to measure)
 static int mtl_fmt_depth(MTLPixelFormat f); static size_t mtl_pf_block_bytes(MTLPixelFormat pf);
-static id<MTL4ComputeCommandEncoder> dispatch_enc(void); static int rb_copy_shift(const tex_t *t, id<MTLTexture> mt);
+static id<MTL4ComputeCommandEncoder> dispatch_enc(int game); static int rb_copy_shift(const tex_t *t, id<MTLTexture> mt);
 static int rb_swap_gpu(uint64_t src, size_t row, size_t img, uint64_t dst, size_t drow, size_t dimg, size_t wb, size_t rows, size_t nz, int shift);
 static uint64_t g_gsb_stores, g_gsb_bytes;
 void mtl_gsb_stats(uint64_t *n, uint64_t *bytes) { *n = g_gsb_stores; *bytes = g_gsb_bytes; }   // hle_nvn.c's power line
@@ -5176,7 +5176,7 @@ static void gsb_store(const tex_t *t, id<MTLTexture> mt, unsigned level, unsigne
     struct { uint64_t src_off, dst_off, base, pitch, img, layer_stride; uint32_t x0, x1, y0, rows, th, gobs_x, gob2; } *p = (void *)((uint8_t *)qb.contents + qo);
     *p = (typeof(*p)){0, 0, base, pitch, img, L.layer_size, xb0, xb1, (uint32_t)y0, h, th, MAX(nvn_tex_level_gobs(&t->d, level), (row + 63u) >> 6), (uint32_t)nvn_gob_switch2};
     g_wr_epoch++; g_mdx_epoch++; sbw_note((uint64_t)(uintptr_t)t->mem, t->L.size, SBW_GPU);
-    e = dispatch_enc(); enc_c_pso(e, ps);
+    e = dispatch_enc(0); enc_c_pso(e, ps);
     enc_c_args(e, ab.gpuAddress + ao, 0); enc_c_args(e, pg, 1); enc_c_args(e, qb.gpuAddress + qo, 2);
     enc_c_dispatch(e, MTLSizeMake((pitch / 16 + 31) / 32, h, n), MTLSizeMake(32, 1, 1));
     g_gsb_bytes += img * n;
