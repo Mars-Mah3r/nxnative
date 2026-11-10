@@ -111,17 +111,19 @@ def wide_view(ctx):
     emit(B(here(), site + 4))
     fs_put(site, [B(site, start)], 'wide view: output resolution table width from its height')
     # The 3D view: the render targets follow the wider size, but the game's cameras keep a 16:9 aspect, so the picture was stretched. sead::PerspectiveProjection::doUpdateMatrix (main+0x3485cc0, a
-    # leaf: vtable main+0x4bf8c70 slot 11; near +0x98, far +0x9c, tan of the half angle +0xac, aspect +0xb0) gives a 16:9 projection the picture's ratio (state +0x110, float; 0 = off) and stores it,
-    # so what reads the aspect back agrees with the matrix: the vertical angle stays and the sides show more. A projection with near 1 and far 10000 is left at 16:9 (the shape main+0x45c810 builds,
-    # and the HUD camera's in the other sead games), as are views of another ratio (cube maps, shadow maps). x9, s2..s5 and the flags are free at the entry
+    # leaf: vtable main+0x4bf8c70 slot 11; near +0x98, far +0x9c, tan of the half angle +0xac, aspect +0xb0) gives a 16:9 projection (within 0.01) the picture's ratio (state +0x110, float; 0 = off)
+    # and stores it, so what reads the aspect back agrees with the matrix: the vertical angle stays and the sides show more. Every 16:9 projection takes it: sead's default near 1 / far 10000
+    # (main+0xea5480) is the shape the game's own cameras keep, and leaving it at 16:9 left the picture stretched on the phone. Views of another ratio (cube maps, shadow maps) stay as they are.
+    # The state page counts the matrices built (+0x120) and widened (+0x124) and keeps the last other ratio seen (+0x128), for the log (hle_nvn.c). x9, x16, s2..s4 and the flags are free at the entry
     site = 0x3485cc0
     fs_site(site, '0084552d')   # ldp s0,s1,[x0,#0xac]
     start = here(); emit(0x2D558400); emit(ADRP(16, here(), FS_STATE_OFF))
-    for w in (0xBD411202, 0x1E202048, 0x540002A0,                                                   # ldr s2,[x16,#0x110]; fcmp s2,#0; b.eq back
-              0x5291C729, 0x72A7FC69, 0x1E270123, 0x1E233823, 0x1E20C063, 0x52A75069, 0x1E270124, 0x1E242060, 0x5400018A,   # |aspect - 16/9| >= 0.001: b.ge back
-              0x2D531003, 0x1E2E1005, 0x1E252060, 0x540000C1,                                       # ldp s3,s4,[x0,#0x98]; near != 1: b.ne apply
-              0x52A8C389, 0x72880009, 0x1E270125, 0x1E252080, 0x54000060,                           # far == 10000: b.eq back
-              0x1E204041, 0xBD00B001):                                                              # apply: fmov s1,s2; str s1,[x0,#0xb0]
+    for w in (0xB9412209, 0x11000529, 0xB9012209,                                                   # +0x120 += 1
+              0xBD411202, 0x1E202048, 0x54000240,                                                   # ldr s2,[x16,#0x110]; fcmp s2,#0; b.eq back
+              0x5291C729, 0x72A7FC69, 0x1E270123, 0x1E233823, 0x1E20C063, 0x529AE149, 0x72A78469, 0x1E270124, 0x1E242060, 0x540000EA,   # |aspect - 16/9| >= 0.01: b.ge other
+              0x1E204041, 0xBD00B001,                                                               # fmov s1,s2; str s1,[x0,#0xb0]
+              0xB9412609, 0x11000529, 0xB9012609, 0x14000002,                                       # +0x124 += 1; b back
+              0xBD012A01):                                                                          # other: str s1,[x16,#0x128]
         emit(w)
     emit(B(here(), site + 4))
     fs_put(site, [B(site, start)], 'wide view: a 16:9 camera takes the picture\'s ratio (the sides show more, nothing stretched)')

@@ -1667,6 +1667,9 @@ static void power_line(uint64_t frame) {
         double nf = frame > pf ? (double)(frame - pf) : 1;   // per frame: the fair comparison when one build holds the frame rate better than another
         LOG("[nvn] power up to frame %llu: CPU energy %.2f W, %.1f mJ per frame (%.1f fps); CPU %.0f%% (100 = one core), %.0f%% of it on performance cores; wakeups %.0f/s (out of platform idle %.0f); GPU %.1f ms/s; thermal %d; top yielders: %s", frame,
             (e - pe) / 1e9 / s, (e - pe) / 1e6 / nf, nf / s, (cpu - pcpu) / 1e7 / s, cpu > pcpu ? 100.0 * (double)(p - pp) / (double)(cpu - pcpu) : 0, (iw - piw) / s, (idw - ppw) / s, (g - pg) / 1e6 / s, dm_thermal_now(), yt);
+        if (dm_fps_state) { float wc, wo; uint32_t wm, ww; memcpy(&wc, dm_fps_state + 0x110, 4);   // Wide view's camera stub (Ocarina's patches.py wide_view): matrices built, widened, last other ratio
+            if (wc > 0) { memcpy(&wm, dm_fps_state + 0x120, 4); memcpy(&ww, dm_fps_state + 0x124, 4); memcpy(&wo, dm_fps_state + 0x128, 4);
+                LOG("[nvn] wide view camera up to frame %llu: %u projections built, %u widened to %.4f, last other ratio %.4f", frame, wm, ww, wc, wo); } }
         char rs[400]; mtl_res_stats(rs, sizeof rs); static uint64_t pbs, pbf; uint64_t bs, bf; mtl_barrier_stats(&bs, &bf);
         uint64_t mtl_cut_count(void), mtl_copy_cut_count(void), mtl_blit_splits(void); void mtl_ubd_stats(uint64_t *, uint64_t *); static uint64_t pcut, pccut, pbsp, pud, puc; uint64_t cut = mtl_cut_count(), ccut = mtl_copy_cut_count(), bsp = mtl_blit_splits(), ud, uc; mtl_ubd_stats(&ud, &uc);
         void mtl_ubp_stats(uint64_t *, uint64_t *, uint64_t *); static uint64_t ppm, ppr, ppf; uint64_t pm, pr, pf_; mtl_ubp_stats(&pm, &pr, &pf_);
