@@ -157,6 +157,8 @@ else [ "$GFXAPI" != nvn ] || t "no pipeline archive ($([ -n "${DM_PSO_GPUS+set}"
 LD=$(python3 -c 'import json, sys; print(next((s["default"] for s in json.load(open(sys.argv[1]))["settings"] if s["env"] == "DM_LANG"), ""))' $LJ) || die "launcher settings ($LJ)"
 if [ -n "$LD" ] && [ "$LD" != "$DM_LANG" ]; then t "game language: the game has no $DM_LANG; packing $LD, its first"; export DM_LANG=$LD; fi
 # Diagnostic build: DM_ENV_FILE=file → dm/env.txt in the bundle (main.m sets one environment variable per line at boot)
+# The launcher's Save editor (OOT SW2SE by Traiver, MIT): its page, read by SaveEditor.swift
+cp tools/save-editor/editor.html Gen/dm/save-editor.html || die "copy the save editor"
 if [ -n "${DM_ENV_FILE:-}" ]; then cp "$DM_ENV_FILE" Gen/dm/env.txt || die "copy DM_ENV_FILE"; t "env: $(grep -v '^#' "$DM_ENV_FILE" | tr '\n' ' ')"; fi
 # The shader libraries go into the archive as DmIOS.app/msl/<folder>, or an NVN game's as the file DmIOS.app/msl/<folder>.img (main.m sets DM_MSL_DIR to msl)
 if [ "$GFXAPI" = vulkan ]; then MSLDIR=vk; elif [ "$GFXAPI" = gl ]; then MSLDIR=gl; else MSLDIR=b-$V; fi

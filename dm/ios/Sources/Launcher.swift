@@ -158,6 +158,10 @@ Fixes and testing: oliverames (game speed below 60 fps, iPhone Duo), Tyuv97G (iP
 
 HookShot by NotRexed: the name, and the idea of frame generation.
 
+OOT SW2SE by Traiver and contributors: the Save editor (MIT).
+
+Ivan0xFF, via NX2navi: the Wide view HUD and movie sites (MIT).
+
 HookLink is an unofficial fan project, not affiliated with Nintendo. You build the game from your own copy.
 """
 
@@ -170,6 +174,7 @@ private struct LauncherView: View {
     @State private var extra: String = "saves"
     @State private var share: ShareItems?
     @State private var picking = false
+    @State private var editing = false   // the Save editor (SaveEditor.swift)
     @State private var note = ""
     @State private var checking = false
     @State private var check = 0   // which Play the running cloud check is for: one the player went on from without it is dropped
@@ -211,6 +216,7 @@ private struct LauncherView: View {
         .background(HL.ground.ignoresSafeArea())
         .preferredColorScheme(.dark)
         .sheet(item: $share) { ShareSheet(items: $0.urls) }
+        .fullScreenCover(isPresented: $editing) { SaveEditorView { editing = false } }
         .confirmationDialog(SaveSyncReport.chooseTitle, isPresented: isAsking(.choose), titleVisibility: .visible, presenting: report) { r in
             Button(r.localLabel(here: "iPhone")) { go(r.localChoice) }
             Button(r.cloudLabel) { go(r.cloudChoice) }
@@ -360,6 +366,7 @@ private struct LauncherView: View {
     // Extras
     private var extrasTab: some View {
         let items: [(String, String, String)] = [("saves", "Export saves", ""), ("import", "Import a save", ""), ("log", "Export game log", ""), ("cloud", "Cloud saves", ""),
+                                                   ("editor", "Save editor", ""),
                                                    ("cheats", "Cheats", cheatNames().isEmpty ? "No file" : "\(cheatsOn.intersection(cheatNames()).count) on"),
                                                    ("reset", "Reset to tested defaults", m.changed ? "" : "Nothing changed"), ("credits", "Credits", "")]
         return GeometryReader { g in
@@ -387,6 +394,9 @@ private struct LauncherView: View {
                 HLRow(title: "Export game log", value: "", chosen: true) { exportLog() }
             case "cloud":
                 List { CloudSavesSection() }.listStyle(.insetGrouped).scrollContentBackground(.hidden).frame(height: 230)
+            case "editor":
+                words("Change rupees, hearts, magic, items, bottles, keys, masks and quest flags in your saves, with OOT SW2SE by Traiver. Your saves are copied to save-backups before each change.")
+                HLRow(title: "Open the save editor", value: "", chosen: true) { editing = true }
             case "cheats":
                 let names = cheatNames()
                 if names.isEmpty {
