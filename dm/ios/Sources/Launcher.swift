@@ -171,6 +171,10 @@ private struct LauncherView: View {
     @State private var share: ShareItems?
     @State private var picking = false
     @State private var note = ""
+    @State private var checking = false
+    @State private var check = 0   // which Play the running cloud check is for: one the player went on from without it is dropped
+    @State private var report: SaveSyncReport?
+    @State private var asking: SaveSyncReport.Step?
     @State private var cheatsOn: Set<String> = Set((UserDefaults.standard.string(forKey: "hooklink.cheats") ?? "").split(separator: "\n").map(String.init))
 
     private var docs: URL { FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0] }
@@ -207,6 +211,16 @@ private struct LauncherView: View {
         .background(HL.ground.ignoresSafeArea())
         .preferredColorScheme(.dark)
         .sheet(item: $share) { ShareSheet(items: $0.urls) }
+        .confirmationDialog(SaveSyncReport.chooseTitle, isPresented: isAsking(.choose), titleVisibility: .visible, presenting: report) { r in
+            Button(r.localLabel(here: "iPhone")) { go(r.localChoice) }
+            Button(r.cloudLabel) { go(r.cloudChoice) }
+            Button("Cancel", role: .cancel) {}
+        } message: { r in Text(r.chooseMessage(here: "iPhone")) }
+        .confirmationDialog(SaveSyncReport.unreadableTitle, isPresented: isAsking(.unreadable), titleVisibility: .visible, presenting: report) { r in
+            Button("Play This iPhone's Save") { go("offline") }
+            Button("Try Again") { DispatchQueue.main.async { start() } }
+            Button("Cancel", role: .cancel) {}
+        } message: { r in Text(r.unreadableMessage(here: "iPhone")) }
         .sheet(isPresented: $picking) {
             DocumentPicker(types: [.folder]) { url in picking = false; importSave(url) } onCancel: { picking = false }
         }
@@ -259,12 +273,17 @@ private struct LauncherView: View {
                     }
                     Text((info("CFBundleDisplayName") as? String) ?? "Game").font(HL.serif(25)).foregroundStyle(.white).multilineTextAlignment(.center).lineLimit(3).minimumScaleFactor(0.7)
                     Text("Version \((info("CFBundleShortVersionString") as? String) ?? "")  •  Ready to play").font(HL.body(13, .medium)).foregroundStyle(HL.dim)
-                    Button(action: { applyCheats(); play() }) {
+                    Button(action: { applyCheats(); start() }) {
                         Text("Play").font(HL.body(22, .heavy)).foregroundStyle(HL.ground).frame(maxWidth: .infinity).frame(height: 54)
                             .background(LinearGradient(colors: [Color(red: 0.914, green: 0.776, blue: 0.416), Color(red: 0.773, green: 0.604, blue: 0.204)], startPoint: .top, endPoint: .bottom))
                             .clipShape(RoundedRectangle(cornerRadius: 6)).overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.white, lineWidth: 2))
                             .shadow(color: Color(red: 1, green: 0.925, blue: 0.667).opacity(0.5), radius: 7)
-                    }.buttonStyle(.plain)
+                    }.buttonStyle(.plain).disabled(checking)
+                    if checking {
+                        HStack(spacing: 6) { ProgressView(); Text("Checking the cloud save…").font(HL.body(13, .medium)).foregroundStyle(HL.dim) }
+                        Button("Play without it") { checking = false; go("offline") }.font(HL.body(13, .bold)).foregroundStyle(HL.gold)
+                    }
+                    if lowDisk { Text("Less than 25 GB free: the game keeps up to about 10 GB of memory on the disk, and it stops when space runs out. Free some space first.").font(HL.body(12, .medium)).foregroundStyle(HL.gold).multilineTextAlignment(.center) }
                 }
                 .padding(.horizontal, 32).padding(.bottom, 12).frame(width: g.size.width * 0.40, height: g.size.height)
                 .background(RadialGradient(colors: [Color(red: 0.231, green: 0.176, blue: 0.098), HL.ground], center: .init(x: 0.5, y: 0.4), startRadius: 10, endRadius: 300))
@@ -432,6 +451,47 @@ private struct LauncherView: View {
         guard let icons = info("CFBundleIcons") as? [String: Any], let primary = icons["CFBundlePrimaryIcon"] as? [String: Any],
               let files = primary["CFBundleIconFiles"] as? [String], let last = files.last else { return nil }
         return UIImage(named: last)
+    }
+    /// Under 25 GB free: the guest's memory files grow to about 10 GB and the disk guard stops the game near the end (Tyuv97G, HookLink issue 3)
+    private var lowDisk: Bool {
+        let free = (try? docs.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]))?.volumeAvailableCapacityForImportantUsage ?? Int64.max
+        return free < 25_000_000_000
+    }
+
+    // Play, once the cloud's save is compared with this iPhone's (upstream's save_sync_report, SaveSyncReport): a save that changed on both sides is the player's pick
+    private func isAsking(_ step: SaveSyncReport.Step) -> Binding<Bool> {
+        Binding(get: { asking == step }, set: { if !$0 && asking == step { asking = nil } })
+    }
+    private func start() {
+        check += 1; checking = true; asking = nil
+        let mine = check
+        dm_cloud_saves_env()
+        DispatchQueue.global(qos: .userInitiated).async {
+            let r = Self.compare()
+            DispatchQueue.main.async {
+                guard checking, check == mine else { return }
+                checking = false
+                switch SaveSyncReport.step(r) {
+                case .play(let choice): go(choice)
+                case let step: report = r; asking = step
+                }
+            }
+        }
+    }
+    private static func compare() -> SaveSyncReport? {
+        guard let save = getenv("DM_SAVE") else { fputs("launcher: save sync: no DM_SAVE\n", stderr); return nil }
+        var buf = [CChar](repeating: 0, count: 1024)
+        guard save_sync_report(save, dm_save_title(), nil, SaveSyncReport.waitMs, &buf, buf.count) == 0 else {
+            fputs("launcher: save sync: no report on \(String(cString: save))\n", stderr); return nil
+        }
+        let line = String(cString: buf)
+        fputs("launcher: save sync: \(line)\n", stderr)
+        return SaveSyncReport(line: line)
+    }
+    private func go(_ choice: String?) {
+        asking = nil
+        if let choice { setenv("DM_SAVE_SYNC_CHOICE", choice, 1); fputs("launcher: DM_SAVE_SYNC_CHOICE=\(choice)\n", stderr) }
+        play()
     }
 }
 
