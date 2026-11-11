@@ -242,6 +242,10 @@ static CALayer *glassDisc(CGFloat r, CAShapeLayer **base) {
     CAShapeLayer *bl = [CAShapeLayer layer]; bl.frame = b; bl.path = circle; bl.fillColor = g_glassIdle.CGColor;
     bl.shadowColor = UIColor.blackColor.CGColor; bl.shadowOpacity = 0.10; bl.shadowRadius = 6; bl.shadowOffset = CGSizeMake(0, 2); bl.shadowPath = circle;
     [g addSublayer:bl]; if (base) *base = bl;
+    if (pad_theme() != 2) {   // Classic and Forest: a flat key in the theme's colours, its rim the theme's line, no glass sheen, rim light or highlight
+        bl.fillColor = k_menuFill.CGColor; bl.strokeColor = k_menuLine.CGColor; bl.lineWidth = 1.5; bl.shadowOpacity = 0;
+        CGPathRelease(circle); return g;
+    }
     CAGradientLayer *sheen = [CAGradientLayer layer]; sheen.frame = b;   // inner light: a little brighter at the top, a soft shade at the bottom
     sheen.colors = @[(id)[UIColor colorWithWhite:1 alpha:0.08].CGColor, (id)[UIColor colorWithWhite:1 alpha:0].CGColor, (id)[UIColor colorWithWhite:0 alpha:0.05].CGColor];
     sheen.locations = @[@0, @0.55, @1];
@@ -699,7 +703,8 @@ static void placeLabel(CATextLayer *t, CGPoint c, CGFloat fs) {
     CGFloat mr = _native ? N_TOP_R * self.gu : K_MENU_R * u; CGPoint mc = self.menuCenter;
     _menu.frame = CGRectMake(mc.x - mr, mc.y - mr, 2 * mr, 2 * mr); _menu.layer.cornerRadius = mr;
     _menu.layer.shadowPath = [UIBezierPath bezierPathWithOvalInRect:_menu.bounds].CGPath;
-    if (_native) { _menu.backgroundColor = g_glassIdle; _menu.layer.borderColor = [UIColor colorWithWhite:1 alpha:0.45].CGColor; _menu.layer.borderWidth = 1.2; _menu.tintColor = [UIColor colorWithWhite:1 alpha:0.95];
+    if (_native && pad_theme() != 2) { _menu.backgroundColor = k_menuFill; _menu.layer.borderColor = k_menuLine.CGColor; _menu.layer.borderWidth = 1.5; _menu.tintColor = k_text; }
+    else if (_native) { _menu.backgroundColor = g_glassIdle; _menu.layer.borderColor = [UIColor colorWithWhite:1 alpha:0.45].CGColor; _menu.layer.borderWidth = 1.2; _menu.tintColor = [UIColor colorWithWhite:1 alpha:0.95];
                    _menu.layer.shadowOpacity = 0.10; _menu.layer.shadowRadius = 6; _menu.layer.shadowOffset = CGSizeMake(0, 2); }
     else { _menu.backgroundColor = k_menuFill; _menu.layer.borderColor = k_menuLine.CGColor; _menu.layer.borderWidth = 1.5; _menu.tintColor = k_text;
            _menu.layer.shadowOpacity = 0.2; _menu.layer.shadowRadius = 3; _menu.layer.shadowOffset = CGSizeMake(0, 1); }
@@ -721,11 +726,12 @@ static void placeLabel(CATextLayer *t, CGPoint c, CGFloat fs) {
     if (!_native) { _nring = _nknob = nil; _nknobBase = nil; return; }
     CGFloat g = self.gu;
     _nring = glassDisc(N_RING_R * g, NULL); _nring.position = self.natStickHome; [_nat addSublayer:_nring];
+    if (pad_theme() != 2) ((CAShapeLayer *)_nring.sublayers.firstObject).fillColor = k_ringFill.CGColor;   // the stick's ring in the theme's own fill
     CAShapeLayer *kb = nil; _nknob = glassDisc(N_KNOB_R * g, &kb); _nknobBase = kb; _nknob.position = self.natStickHome; [_nat addSublayer:_nknob];
     static NSString *const sym[B_N] = { [B_A] = @"arrow.2.circlepath", [B_B] = @"arrow.uturn.backward", [B_X] = @"chevron.up.2", [B_R] = @"shield.lefthalf.filled", [B_ZL] = @"sparkles", [B_ZR] = @"scope", [B_PLUS] = @"line.3.horizontal", [B_MINUS] = @"map", [B_LEFT] = @"arrowtriangle.left.fill", [B_UP] = @"arrowtriangle.up.fill", [B_RIGHT] = @"arrowtriangle.right.fill", [B_DOWN] = @"arrowtriangle.down.fill" };
     static NSString *const chip[B_N] = { [B_A] = @"A", [B_B] = @"B", [B_X] = @"X", [B_Y] = @"Y", [B_R] = @"R", [B_ZL] = @"ZL", [B_ZR] = @"ZR", [B_PLUS] = @"+", [B_MINUS] = @"\u2212" };
     for (int i = 0; i < (int)(sizeof k_nat / sizeof *k_nat); i++) { int b = k_nat[i]; CGPoint c; CGFloat r; [self nat:b centre:&c radius:&r];
-        CAShapeLayer *base = nil; CALayer *d = glassDisc(r, &base); d.position = c; base.fillColor = nat_fill(b, NO).CGColor;
+        CAShapeLayer *base = nil; CALayer *d = glassDisc(r, &base); d.position = c; base.fillColor = nat_fill(b, NO).CGColor; if (pad_theme() != 2) base.strokeColor = k_kline[b].CGColor;
         if (b == B_Y) glassSword(d, 24 * g); else glassSymbol(d, sym[b], (b == B_A ? 17 : b == B_PLUS || b == B_MINUS ? 11 : b >= B_LEFT ? 10 : b == B_X ? 14 : b == B_Y ? 12 : 15) * g, scale);
         if (b < B_LEFT) glassChip(d, chip[b], b == B_R || b == B_ZL || b == B_ZR, scale);
         [_nat addSublayer:d]; _nk[b] = d; _nbase[b] = base;
