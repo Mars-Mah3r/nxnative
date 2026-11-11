@@ -851,6 +851,7 @@ One line per symptom in the [subsystem references](../reference/): what you see 
 - an assert (a stripped trap, `main+0x4d26e0`) when the surface does not list `preTransform` INHERIT. → [Swapchain pre-transform and layer crop](../reference/rendering.md#swapchain-pre-transform-and-layer-crop)
 - a pipeline with no Metal pipeline state, and its draws missing. → [Specialization constants](../reference/rendering.md#specialization-constants)
 - a crash in `set_free` from `vkFreeDescriptorSets` as a game leaves. → [What a game tears down that it should not](../reference/rendering.md#what-a-game-tears-down-that-it-should-not)
+- a game's conditional draws are drawn though most of them would be skipped: Ocarina of Time on an iPhone had 94 % of its conditions unknown at encode time (log 80: 137,221 of 145,517), and of those decided about half were hidden. → [Occlusion conditions decided by the frame before's result (experimental)](../reference/rendering.md#occlusion-conditions-decided-by-the-frame-befores-result-experimental)
 - `[RED] occlusion query outside a render pass or past the buffer`; a query's result stays 0. → [Occlusion queries that span render encoders](../reference/rendering.md#occlusion-queries-that-span-render-encoders)
 - a call to address 0 at boot. → [`VK_EXT_debug_report`](../reference/rendering.md#vk_ext_debug_report)
 - the 3D world black, the HUD drawn over it; the scene's own colour target, read back, holds the whole scene. → [Attachments opened with `LOAD_OP_DONT_CARE`](../reference/rendering.md#attachments-opened-with-load_op_dont_care)

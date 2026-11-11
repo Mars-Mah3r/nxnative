@@ -11,7 +11,7 @@
 #             platform:<ios | mac>: the app's platform (SETTINGS_PLATFORM, ios when unset), for a switch only that platform's front end reads
 #   section   Game, Controls or Performance: a heading on the single settings screen. Rows appear in table order within each section
 #             Reset to tested defaults clears all launcher choices; values fixed by an env file stay
-#   label, note  the setting's name and the line under it (may be empty; only for a setting with a cost: latency, memory, heat)
+#   label, note  the setting's name and the line under it (may be empty): its cost (latency, memory, heat), then the setting recommended, as "Recommended: ..."
 #   meta      optional, key=value pairs separated by ; (settings.py META lists the keys; docs/frontends.md, The settings list, describes them):
 #             level=basic  a setting a front end shows first;  needs=<VAR>=<value>  a sub-setting, drawn only while the row that sets <VAR> has that value
 DM_FRAME_MODE	choice	0=60 fps,1=30 fps steady,2=30 fps + frame generation,3=60 fps + frame generation (experimental)	2	DM_GAME_FPS_TARGET!=0	Game	Frame rate mode	30 fps + frame generation is the default: the game draws a steady 30 and the screen shows 60, cooler and smoother than 60 fps on most iPhones. 30 fps steady runs coolest. Frame generation draws at that rate and shows twice as many frames (60, or 120 on a 120 Hz screen), with a little more input delay. A mode sets Frame rate, Frame generation and Hold frames when late for you.	level=basic
@@ -26,6 +26,7 @@ DM_LANG	choice	languages	build:DM_LANG	languages>1	Game	Game language		level=bas
 DM_FULLSCREEN	choice	0=Window,1=Fullscreen	0	platform:mac	Game	Display mode		level=basic
 DM_PICTURE_FIT	choice	fit=Fit,fill=Fill	fit	platform:ios	Game	Picture	Fill crops the game's 16:9 picture to cover the screen. Health bars, subtitles or maps near the edges can be cut off. A full-screen picture without cropping needs a patch for each game.
 DM_SHOW_FPS	toggle	-	build:DM_SHOW_FPS	platform:ios	Game	Frame-rate counter
+DM_FRAMEGEN_SCALE	choice	1=Full,0.75=Lighter	1	gfxapi:nvn	Game	Frame generation size	Lighter makes the in-between frames at 0.75 of the picture's size, and MetalFX scales the picture back up: about half of frame generation's GPU time, for a slightly softer picture, the HUD too. Recommended: Full; Lighter if frames drop in busy areas.	needs=DM_FRAMEGEN=1
 DM_TOUCH_HAPTICS	toggle	-	1	platform:ios	Controls	Touch feedback
 DM_PAD_THEME	choice	0=Classic,1=Forest,2=Glass	DM_GAME_PAD_THEME	platform:ios	Controls	Touch controls style	The colours of the on-screen controls.
 DM_PAD_OPACITY	range	0.2:1:0.05	1	platform:ios	Controls	Touch controls opacity	How see-through the on-screen controls are, from 20 % to fully drawn. Takes effect the next time the game starts.
