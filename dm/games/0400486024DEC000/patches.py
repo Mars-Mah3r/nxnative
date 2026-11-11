@@ -194,18 +194,18 @@ def wide_view(ctx):
 # - The movie layer's draw (main+0x3b5c71c) builds a viewport over the whole picture at x29 - 40 (min x +8, max x +16); after ldp x9, x8, [x19, #0x18] (main+0x3b5c758) it moves in
 #   by the margin on each side (state +0x164: (1 - squeeze) / 2 of the width), the middle 16:9. Count at state +0x16c. x16, x17 and s16..s19 are free there.
 # The stubs' words were assembled with clang from the source in this comment's commit; nop placeholders are the patch-relative instructions written below
-HUD_WORDS = (0xAD401041, 0xD503201F, 0xBD416210, 0x1E260211, 0x34000451, 0x1E260031, 0x52911130, 0x72A74110, 0x4A110210, 0x350003B0, 0x0E0C3C91, 0x52973AD0, 0x72A74E50,
+hud_words = (0xAD401041, 0xD503201F, 0xBD416210, 0x1E260211, 0x34000451, 0x1E260031, 0x52911130, 0x72A74110, 0x4A110210, 0x350003B0, 0x0E0C3C91, 0x52973AD0, 0x72A74E50,
              0x4A110210, 0x35000310, 0xD106E011, 0xF9400231, 0xD503201F, 0xD503201F, 0xCA110210, 0xB4000250, 0xD503201F, 0xD503201F, 0xCA110210, 0xB40001D0, 0xD503201F,
              0xD503201F, 0xCA110210, 0xB4000150, 0xD503201F, 0xD503201F, 0xCA110210, 0xB40000D0, 0x4F909021, 0xD503201F, 0xB9416A11, 0x11000631, 0xB9016A11, 0xD503201F)
-HUD_KEEP = (0x4bed098, 0x4be4fb0, 0x4be61c8, 0x4be7b30)   # item wheel background, pause / system menu backgrounds, event fade, loading fade
-MOVIE_WORDS = (0xD503201F, 0xBD416633, 0x1E260270, 0x340001B0, 0xD100A3B0, 0xBD400A10, 0xBD401211, 0x1E303A32, 0x1E330A52, 0x1E322A10, 0x1E323A31, 0xBD000A10,
+hud_keep = (0x4bed098, 0x4be4fb0, 0x4be61c8, 0x4be7b30)   # item wheel background, pause / system menu backgrounds, event fade, loading fade
+movie_words = (0xD503201F, 0xBD416633, 0x1E260270, 0x340001B0, 0xD100A3B0, 0xBD400A10, 0xBD401211, 0x1E303A32, 0x1E330A52, 0x1E322A10, 0x1E323A31, 0xBD000A10,
                0xBD001211, 0xB9416E30, 0x11000610, 0xB9016E30, 0xA941A269, 0xD503201F)
 def wide_hud(ctx):
     here, emit, fs_site, fs_put, FS_STATE_OFF = ctx.here, ctx.emit, ctx.site, ctx.put, ctx.state
     site = 0x774368
     fs_site(site, (0xAD401041).to_bytes(4, 'little').hex())   # ldp q1, q4, [x2]
-    start = here(); keep = iter(HUD_KEEP); pending = None
-    for i, w in enumerate(HUD_WORDS):
+    start = here(); keep = iter(hud_keep); pending = None
+    for i, w in enumerate(hud_words):
         if i in (1, 34): w = ADRP(16, here(), FS_STATE_OFF)                       # the state page
         elif i in (17, 21, 25, 29): pending = next(keep); w = ADRP(16, here(), pending)   # a vtable that keeps the whole picture: its page
         elif i in (18, 22, 26, 30): w = ADDI(16, 16, pending & 0xFFF)               # ... and its offset in the page
@@ -215,7 +215,7 @@ def wide_hud(ctx):
     site = 0x3b5c758
     fs_site(site, (0xA941A269).to_bytes(4, 'little').hex())   # ldp x9, x8, [x19, #0x18]
     start = here()
-    for i, w in enumerate(MOVIE_WORDS):
+    for i, w in enumerate(movie_words):
         if i == 0: w = ADRP(17, here(), FS_STATE_OFF)
         elif i == 17: w = B(here(), site + 4)
         emit(w)
