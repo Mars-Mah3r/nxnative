@@ -205,6 +205,183 @@ struct LauncherView: View {
     }
 }
 
+// HookLink: the game launcher in the look of the iPhone's (dm/ios/Sources/Launcher.swift): three tabs, Settings, Play (in the middle, shown first) and Extras, a list on the
+// left and a panel on the right. Play keeps the icon, the name and Play on the left; Settings lists every setting by section with the chosen one's control in the panel;
+// Extras opens the saves, the logs and the cheats folder in Finder, holds cloud saves, the reset and the credits. Play and Quit work as in LauncherView (the cloud-save check).
+private enum HLM {
+    static let ground = Color(red: 0.106, green: 0.078, blue: 0.047), bar = Color(red: 0.145, green: 0.106, blue: 0.063), panel = Color(red: 0.055, green: 0.039, blue: 0.024)
+    static let line = Color(red: 0.365, green: 0.290, blue: 0.173), trim = Color(red: 0.541, green: 0.439, blue: 0.251), gold = Color(red: 0.788, green: 0.659, blue: 0.353)
+    static let text = Color(red: 0.937, green: 0.894, blue: 0.784), dim = Color(red: 0.788, green: 0.722, blue: 0.561), tabOn = Color(red: 0.247, green: 0.192, blue: 0.118)
+    static func serif(_ size: CGFloat) -> Font { .system(size: size, weight: .bold, design: .serif) }
+    static func body(_ size: CGFloat, _ weight: Font.Weight = .semibold) -> Font { .system(size: size, weight: weight, design: .rounded) }
+}
+private struct HLMRow: View {
+    let title: String, value: String, chosen: Bool, action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Text(title).font(HLM.body(14, .bold)).foregroundStyle(HLM.text).lineLimit(1)
+                Spacer(minLength: 8)
+                Text(value).font(HLM.body(13, .medium)).foregroundStyle(chosen ? HLM.text : HLM.dim).lineLimit(1)
+            }
+            .padding(.horizontal, 14).frame(minHeight: 36)
+            .background(Color.white.opacity(chosen ? 0.12 : 0.045))
+            .overlay(RoundedRectangle(cornerRadius: 4).stroke(chosen ? Color.white : HLM.line, lineWidth: chosen ? 2 : 1))
+            .contentShape(Rectangle())
+        }.buttonStyle(.plain)
+    }
+}
+struct HookLinkMacLauncher: View {
+    @ObservedObject var m: LauncherModel
+    let done: (Bool) -> Void
+    @AppStorage("window.show") private var show = true
+    @State private var tab = 1
+    @State private var chosen = "DM_FRAME_MODE"
+    @State private var extra = "saves"
+    @State private var checking = false
+    @State private var check = 0
+    @State private var note = ""
+    private var save: URL? { getenv("DM_SAVE").map { URL(fileURLWithPath: String(cString: $0)) } }
+    private func value(_ s: Setting) -> String {
+        let v = m.values[s.env] ?? s.def
+        switch s.kind {
+        case "choice": return s.options?.first { $0[0] == v }?[1] ?? v
+        case "range": return m.rangeLabel(s, Double(v) ?? 1)
+        default: return v == s.onValue ? "On" : "Off"
+        }
+    }
+    var body: some View {
+        VStack(spacing: 0) {
+            ZStack {
+                HStack { Text("HookLink").font(HLM.body(13, .heavy)).foregroundStyle(HLM.dim); Spacer()
+                         Toggle("Show at launch", isOn: $show).toggleStyle(.checkbox).font(HLM.body(12)).foregroundStyle(HLM.dim) }.padding(.horizontal, 18)
+                HStack(spacing: 0) {
+                    ForEach(Array(["Settings", "Play", "Extras"].enumerated()), id: \.offset) { i, t in
+                        Button { tab = i } label: {
+                            Text(t).font(HLM.body(16, .heavy)).foregroundStyle(tab == i ? Color.white : HLM.dim).padding(.horizontal, 26).frame(height: 42).background(tab == i ? HLM.tabOn : .clear).contentShape(Rectangle())
+                        }.buttonStyle(.plain)
+                    }
+                }
+            }
+            .frame(height: 42).background(HLM.bar).overlay(Rectangle().fill(HLM.line).frame(height: 1), alignment: .bottom)
+            Rectangle().fill(HLM.trim).frame(height: 2).padding(.horizontal, 40).padding(.top, 6)
+            Group {
+                if tab == 1 { playTab } else if tab == 0 { settingsTab } else { extrasTab }
+            }.frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .background(HLM.ground)
+        .preferredColorScheme(.dark)
+        .frame(minWidth: 900, minHeight: 540)
+    }
+    private func panel<V: View>(_ title: String, @ViewBuilder _ content: () -> V) -> some View {
+        VStack(spacing: 8) {
+            Text(title).font(HLM.serif(22)).foregroundStyle(.white).multilineTextAlignment(.center)
+            HStack(spacing: 10) { Rectangle().fill(HLM.trim).frame(height: 1); Rectangle().fill(HLM.gold).frame(width: 7, height: 7).rotationEffect(.degrees(45)); Rectangle().fill(HLM.trim).frame(height: 1) }
+            ScrollView { content() }
+        }
+        .padding(18).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(HLM.panel).overlay(Rectangle().fill(HLM.line).frame(width: 1), alignment: .leading)
+    }
+    private var playTab: some View {
+        HStack(spacing: 0) {
+            VStack(spacing: 12) {
+                Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 110, height: 110).accessibilityHidden(true)
+                Text(info("CFBundleName") ?? "Game").font(HLM.serif(24)).foregroundStyle(.white).multilineTextAlignment(.center)
+                Text("Version \(info("CFBundleShortVersionString") ?? "1.0")").font(HLM.body(13, .medium)).foregroundStyle(HLM.dim)
+                Button(action: start) {
+                    Text("Play").font(HLM.body(21, .heavy)).foregroundStyle(HLM.ground).frame(maxWidth: .infinity).frame(height: 50)
+                        .background(LinearGradient(colors: [Color(red: 0.914, green: 0.776, blue: 0.416), Color(red: 0.773, green: 0.604, blue: 0.204)], startPoint: .top, endPoint: .bottom))
+                        .clipShape(RoundedRectangle(cornerRadius: 6)).overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.white, lineWidth: 2))
+                }.buttonStyle(.plain).keyboardShortcut(.defaultAction).disabled(checking)
+                if checking {
+                    HStack(spacing: 6) { ProgressView().controlSize(.small); Text("Checking the cloud save…").font(HLM.body(12, .medium)).foregroundStyle(HLM.dim) }
+                    Button("Play without it") { checking = false; SaveCheck.apply("offline"); done(true) }.buttonStyle(.link)
+                }
+                Button("Quit") { done(false) }.buttonStyle(.link).foregroundStyle(HLM.dim)
+            }
+            .padding(30).frame(width: 340)
+            panel("How it will run") {
+                VStack(spacing: 6) {
+                    ForEach(["DM_FRAME_MODE", "DM_RENDER_SCALE", "DM_DYNAMIC_RESOLUTION", "DM_UPSCALER", "DM_FULLSCREEN"].compactMap { e in m.settings.first { $0.env == e } }) { s in
+                        HLMRow(title: s.label, value: value(s), chosen: false) { chosen = s.env; tab = 0 }
+                    }
+                    Text("Click a row to change it in Settings.").font(HLM.body(12, .medium)).foregroundStyle(HLM.dim).padding(.top, 4)
+                }
+            }
+        }
+    }
+    private var settingsTab: some View {
+        HStack(spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(m.sections, id: \.self) { section in
+                        let rows = m.rows(in: section)
+                        if !rows.isEmpty {
+                            Text(section).font(HLM.serif(16)).foregroundStyle(HLM.gold).padding(.top, 6)
+                            ForEach(rows) { s in HLMRow(title: s.label, value: value(s), chosen: chosen == s.env) { chosen = s.env } }
+                        }
+                    }
+                }.padding(16)
+            }.frame(width: 430)
+            if let s = m.settings.first(where: { $0.env == chosen }) ?? m.settings.first {
+                panel(s.label) {
+                    VStack(spacing: 10) {
+                        if !s.note.isEmpty { Text(s.note).font(HLM.body(13, .medium)).foregroundStyle(HLM.text).multilineTextAlignment(.center) }
+                        SettingRow(s: s, m: m).padding(10).background(Color.white.opacity(0.05)).clipShape(RoundedRectangle(cornerRadius: 6))
+                    }
+                }
+            }
+        }
+    }
+    private var extrasTab: some View {
+        let items: [(String, String)] = [("saves", "Saves"), ("log", "Game log"), ("cheats", "Cheats folder"), ("cloud", "Cloud saves"), ("reset", "Reset to tested defaults"), ("credits", "Credits")]
+        return HStack(spacing: 0) {
+            VStack(spacing: 6) { ForEach(items, id: \.0) { it in HLMRow(title: it.1, value: "", chosen: extra == it.0) { extra = it.0; note = "" } } ; Spacer() }.padding(16).frame(width: 340)
+            panel(items.first { $0.0 == extra }?.1 ?? "Extras") {
+                VStack(spacing: 10) {
+                    switch extra {
+                    case "saves":
+                        Text("Your saves are in this game's folder in your Library. Open it in Finder to copy them or put a save back (with the game closed).").font(HLM.body(13, .medium)).foregroundStyle(HLM.text).multilineTextAlignment(.center)
+                        HLMRow(title: "Show the saves in Finder", value: "", chosen: true) { if let u = save { NSWorkspace.shared.activateFileViewerSelecting([u]) } }
+                    case "log":
+                        Text("The game's log of the last session and the one before it. Attach it when you report a problem.").font(HLM.body(13, .medium)).foregroundStyle(HLM.text).multilineTextAlignment(.center)
+                        HLMRow(title: "Show the logs in Finder", value: "", chosen: true) { NSWorkspace.shared.open(URL(fileURLWithPath: NSHomeDirectory() + "/Library/Logs/nxnative")) }
+                    case "cheats":
+                        Text("Put an Atmosphère cheat file for this game in this folder; the game loads it at start. HookLink ships none. Cheats can break a save: back it up first.").font(HLM.body(13, .medium)).foregroundStyle(HLM.text).multilineTextAlignment(.center)
+                        HLMRow(title: "Open the cheats folder", value: "", chosen: true) {
+                            if let d = save?.deletingLastPathComponent().appendingPathComponent("cheats") { try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true); NSWorkspace.shared.open(d) }
+                        }
+                    case "cloud":
+                        Form { CloudSavesSection() }.formStyle(.grouped).frame(height: 220)
+                    case "reset":
+                        Text("Brings back all settings this game was tested with.").font(HLM.body(13, .medium)).foregroundStyle(HLM.text)
+                        HLMRow(title: "Reset to tested defaults", value: m.changed ? "" : "Nothing changed", chosen: m.changed) { m.reset(); note = "Settings are back to the tested defaults." }.disabled(!m.changed)
+                    default:
+                        Text("HookLink builds on nxnative by seedds and its contributors; cheemu21's kid-with-sword and its contributors (frame generation, steady 30 fps, the touch controls' inspiration); PromethOps, LeonardoBai12 and vladbondarenko97's pull requests; oliverames, Tyuv97G, cshess and gunvalk's testing and findings; and HookShot by NotRexed. HookLink is an unofficial fan project, not affiliated with Nintendo.").font(HLM.body(13, .medium)).foregroundStyle(HLM.text)
+                    }
+                    if !note.isEmpty { Text(note).font(HLM.body(13, .bold)).foregroundStyle(HLM.gold) }
+                }
+            }
+        }
+    }
+    private func start() {
+        check += 1; checking = true
+        let mine = check
+        DispatchQueue.global(qos: .userInitiated).async {
+            let r = SaveCheck.report()
+            DispatchQueue.main.async {
+                guard checking, check == mine else { return }
+                checking = false
+                switch SaveCheck.ask(r, cancel: "Cancel") {
+                case .play(let choice): SaveCheck.apply(choice); done(true)
+                case .retry: start()
+                case .cancel: break
+                }
+            }
+        }
+    }
+}
+
 /// Cloud saves: a folder the save is synced through (dm/host/save_sync.h), the one the iPhone app picks in its launcher's Cloud saves section. It is kept in this app's
 /// preferences as cloudSaves.folder, which launcher.c puts into DM_SAVE_SYNC before the host starts; a DM_SAVE_SYNC an env file or the launch environment set wins, and is shown here.
 struct CloudSavesSection: View {
@@ -263,15 +440,13 @@ private final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate 
         app.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         app.addItem(withTitle: "Quit \(name)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         item.submenu = app; menu.addItem(item); NSApp.mainMenu = menu
-        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 660), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
+        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 960, height: 580), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         w.title = name; w.isReleasedWhenClosed = false; w.delegate = self
-        w.contentMinSize = NSSize(width: 520, height: 0)
+        w.contentMinSize = NSSize(width: 900, height: 540)
         window = w
-        if let screen = w.screen ?? NSScreen.main {
-            w.setFrameTopLeftPoint(NSPoint(x: screen.visibleFrame.midX - w.frame.width / 2, y: screen.visibleFrame.maxY))
-        }
-        let host = NSHostingView(rootView: LauncherView(m: model, done: { [weak self] in self?.finish($0) }, fit: { [weak self] in self?.fit($0) }))
-        host.sizingOptions = []   // the Form's measured scroll content owns the height, including after collapse
+        w.center()
+        let host = NSHostingView(rootView: HookLinkMacLauncher(m: model, done: { [weak self] in self?.finish($0) }))   // HookLink: the tabbed launcher (LauncherView stays for reference)
+        host.sizingOptions = []
         w.contentView = host
         host.layoutSubtreeIfNeeded()
         // no activation and no ordering in front of another app's windows: LaunchServices activates an app opened from Finder or the Dock (applicationDidBecomeActive), open -g does not
