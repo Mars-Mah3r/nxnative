@@ -105,7 +105,11 @@ def dynamic_resolution(ctx):
 # written at each start from the screen's shape (loader.c), so the view widens and nothing stretches, and 0 there (16:9, or the setting off) runs the game's own constant. Sites from
 # nxnative PR 1460 by vladbondarenko97, which cut them at build time; v131072 only, by the frame-ratio function's address. Each stub writes only the register the constant loads
 wide_sites = [(0x1202ee0, 0xD2814008, 0x100, 8, 'graphics setup output width'), (0x31f39f4, 0xD2814008, 0x100, 8, 'docked render width'),
-              (0x31f3a00, 0xD280F008, 0x104, 8, 'handheld render width'), (0xecbc80, 0x52A8A409, 0x108, 9, 'output width as a float')]
+              (0x31f3a00, 0xD280F008, 0x104, 8, 'handheld render width'), (0xecbc80, 0x52A8A409, 0x108, 9, 'output width as a float'),
+              # The view size the game lays its screen out by: main+0xe8303c stores a fixed 1920.0 x 1080.0 unless its screen object's +0x1a9 / +0x1aa flags are set (docked takes the
+              # render size there, and nxnative PR 1460 was only played docked). Handheld took the fixed size, so the HUD and menus were laid out for 16:9 and spread over the wider
+              # picture. The width comes from the state page (+0x118, a float: the handheld render width; DM_WIDE_VIEW_SIZE=0 leaves 0 there and the game's own 1920)
+              (0xe8303c, 0x52A89E08, 0x118, 8, 'view size width as a float')]
 def wide_view(ctx):
     if ctx.base != 0x6e6be0: return
     here, emit, fs_site, fs_put, FS_STATE_OFF = ctx.here, ctx.emit, ctx.site, ctx.put, ctx.state
@@ -152,14 +156,20 @@ def wide_view(ctx):
         c = (0x130 + 4 * k) // 4
         start = here(); emit(ADRP(16, here(), FS_STATE_OFF))
         if site in (0x4C533C, 0x2E1BB6C, 0x2E1C7D0):
-            # The game's cameras' own aspect parameter (+0x140, copied from +0xc8): the phone's log showed main+0x4c533c storing it every frame and never 16:9, so whatever it holds is
-            # scaled by the picture's ratio over 16:9 (state +0x114, float; 0 = off) and the value it came with is kept at +0x128 for the log. s1 is written or a call follows at each site
+            # The game's cameras' own aspect parameter (+0x140, copied from +0xc8): main+0x4c533c stores it every frame, 1.7778 on the phone (15,302 stores in one run). It is not
+            # 1920/1080 to the bit (the exact test above left it alone), so a value within about 0.01 of 16:9 takes the picture's ratio, tested on its bits as these sites carry live
+            # flags. A value already wide is left as it is: with the view size above the game may set the wide ratio itself, and it must not be widened twice. The value the game
+            # came with is kept at +0x128 for the log
             for w in (0xB9400211 | c << 10, 0x11000631, 0xB9000211 | c << 10, 0xBD012A00,      # this site's passes += 1; +0x128 = the aspect as the game set it
-                      0xB9411611, 0x34000011 | 6 << 5, 0x1E270221, 0x1E210800,                  # w17 = the scale, 0: store as is; s1 = scale; s0 *= s1
+                      0x1E260011, 0x52800010 | 0x4E39 << 5, 0x72A00010 | 0x3FE2 << 5,            # w17 = its bits; w16 = the bits of 16/9 - 0.0098
+                      0x4B100231, 0x53127E31, 0x35000011 | 8 << 5):                              # (w17 - w16) >> 18 != 0: not 16:9, store as is
+                emit(w)
+            emit(ADRP(16, here(), FS_STATE_OFF))
+            for w in (0xB9411211, 0x34000011 | 5 << 5, 0x1E270220,                              # the picture's ratio (+0x110), 0: store as is; s0 = ratio
                       0xB9412611, 0x11000631, 0xB9012611, orig):                                 # widened += 1; the game's store
                 emit(w)
             emit(B(here(), site + 4))
-            fs_put(site, [B(site, start)], f'wide view: the game camera\'s aspect parameter is scaled by the picture\'s ratio over 16:9 (site {k})')
+            fs_put(site, [B(site, start)], f'wide view: the game camera\'s 16:9 aspect parameter takes the picture\'s ratio (site {k})')
             continue
         for w in (0xB9400211 | c << 10, 0x11000631, 0xB9000211 | c << 10,                    # this site's passes += 1
                   0x1E260011 | n << 5, 0x52800010 | 0x8E37 << 5, 0x72A00010 | 0x3FE3 << 5,      # w17 = the aspect's bits; w16 = 16:9's bits - 2
