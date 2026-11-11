@@ -421,7 +421,8 @@ DM_WATCH_STALL	diagnostic	`=<s>`: when the frame loop makes no progress for that
 DM_WEB_LOG	diagnostic	`1` logs each key an offline HTML page is given and where the focus is after it
 DM_WIDE_ASPECT	switch	The screen's width / height from 1.8 to 2.6 for `DM_WIDE_VIEW`; the iOS front end sets it from the window
 DM_WIDE_VIEW	player	`1`: on a game with a wide-view stub, the output and render sizes follow a screen wider than 16:9, for a wider view with no black bars (default 0); launcher setting
-DM_WIDE_VIEW_SIZE	switch	`0`: with Wide view on, the game keeps its own 1920-wide view size, so the HUD and menus are spread over the wider picture as in HookLink 1.7 (default: the view size takes the render width; Ocarina of Time's `patches.py` `wide_sites`)
+DM_WIDE_VIEW_SIZE	switch	`1`: with Wide view on, the game lays its screen out at the wider handheld render width (HookLink 1.8's HUD attempt); `0` or unset with DM_WIDE_HUD on: the game's own 1920-wide view size, which the HUD squeeze needs
+DM_WIDE_HUD	player	`0`: with Wide view on, the HUD, menus and movies spread over the whole picture; by default (`1`) the full-screen UI projection is squeezed into the middle 16:9 and movies play there (Ocarina of Time's patches.py wide_hud, Ivan0xFF's sites via NX2navi; state +0x160 the squeeze, +0x164 the movie margin)
 DM_WINDOW	switch	When set (to any value, `0` included) opens a Mac window with keyboard and controller input; unset runs headless with the guest on the current thread; the Mac launcher sets it
 DM_WINDOW_TOP	diagnostic	`1` (Mac, with `DM_WINDOW`) orders the game window in front without activating it and keeps it above other apps' windows, so a covered window does not slow the run; `regress.py` sets it
 DM_XCODE_DERIVED_DATA	path	Xcode derived data folder for `build_ipa.sh` (default `$W/build/ios/xcode-dd`); the NSP script points it into the game's build folder

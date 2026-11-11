@@ -1987,7 +1987,9 @@ static void power_line(uint64_t frame) {
             if (wc > 0) { memcpy(&wm, dm_fps_state + 0x120, 4); memcpy(&ww, dm_fps_state + 0x124, 4); memcpy(&wo, dm_fps_state + 0x128, 4);
                 uint32_t sc[11]; memcpy(sc, dm_fps_state + 0x130, sizeof sc);   // passes of each aspect store site (patches.py wide_view, in its order)
                 LOG("[nvn] wide view camera up to frame %llu: %u projections built, %u widened to %.4f, last other ratio %.4f; aspect sets per site %u %u %u %u %u %u %u %u %u %u %u", frame, wm, ww, wc, wo,
-                    sc[0], sc[1], sc[2], sc[3], sc[4], sc[5], sc[6], sc[7], sc[8], sc[9], sc[10]); } }
+                    sc[0], sc[1], sc[2], sc[3], sc[4], sc[5], sc[6], sc[7], sc[8], sc[9], sc[10]);
+                float sq; uint32_t hu, mv; memcpy(&sq, dm_fps_state + 0x160, 4); memcpy(&hu, dm_fps_state + 0x168, 4); memcpy(&mv, dm_fps_state + 0x16c, 4);   // patches.py wide_hud
+                if (sq > 0) LOG("[nvn] wide view HUD up to frame %llu: %u UI projections kept in the middle %.1f%%, %u movie viewports", frame, hu, sq * 100.0f, mv); } }
         char rs[400]; mtl_res_stats(rs, sizeof rs); static uint64_t pbs, pbf; uint64_t bs, bf; mtl_barrier_stats(&bs, &bf);
         uint64_t mtl_cut_count(void), mtl_copy_cut_count(void), mtl_blit_splits(void); void mtl_ubd_stats(uint64_t *, uint64_t *); static uint64_t pcut, pccut, pbsp, pud, puc; uint64_t cut = mtl_cut_count(), ccut = mtl_copy_cut_count(), bsp = mtl_blit_splits(), ud, uc; mtl_ubd_stats(&ud, &uc);
         void mtl_ubp_stats(uint64_t *, uint64_t *, uint64_t *); static uint64_t ppm, ppr, ppf; uint64_t pm, pr, pf_; mtl_ubp_stats(&pm, &pr, &pf_);

@@ -1,6 +1,6 @@
 # The Legend of Zelda: Ocarina of Time (0400486024DEC000): the rewriter's patches of this game's own code. dm/tools/patch_nso.py loads every profile's patches.py;
 # MATCH_FRAME_STEP as described there ("Registered patches"). Patches of Nintendo SDK module builds are in dm/tools/sdk_patches.py
-from nso_asm import ADRP, B
+from nso_asm import ADRP, ADDI, B
 
 # The game's frame ratio. Once a frame the function at main+0x6e6be0 (v131072, ModuleSystem::moduleCalc_ by the name of its job) divides its base rate (60.0, or 30.0 while
 # bit 0 of [x21+0x24f] is set) by the int frame rate at [x21+0x2c8] (fdiv s8,s1,s0 at +0xe4) and hands the result to the time object (main+0x3b4e300: ratio at +0x10, 1 / ratio
@@ -181,6 +181,46 @@ def wide_view(ctx):
             emit(w)
         emit(B(here(), site + 4))
         fs_put(site, [B(site, start)], f'wide view: a 16:9 camera aspect set here takes the picture\'s ratio (site {k})')
+    wide_hud(ctx)
+
+# Wide view's HUD, menus and movies in the middle 16:9 (DM_WIDE_HUD, on with Wide view). The sites are Ivan0xFF's (MIT, "The matrix-update, UI and movie sites: Copyright (c)
+# 2026 Ivan0xFF"), from NX2navi's recomp/patches-v111.txt, for this same build (e0f3ccfa); written here as stubs of our own, which change no flags.
+# - The 2D canvas setup (main+0x774330) loads a layout's projection rows at main+0x774368 (ldp q1, q4, [x2]; the canvas is x0, its screen 0x1b8 before it). When the projection is
+#   the full-screen orthographic one of the 3840x2160 layout grid (m00 = 2/3840, m11 = 2/2160, compared by their bits), its first row is multiplied by the squeeze (state +0x160:
+#   16:9 over the picture's ratio, 0 = off), so the UI keeps its shape in the middle of the wider picture and the markers that follow the 3D world stay on their targets. Four
+#   screens keep the whole picture, by their vtable: the item-wheel background (main+0x4bed098) and the pause and system menu backgrounds (main+0x4be4fb0) redraw a capture of the
+#   whole picture, and the event and loading fades (main+0x4be61c8, main+0x4be7b30) must cover it all. Count at state +0x168. x16, x17 and v16 are free there (a leaf; v16..v19 are
+#   written next).
+# - The movie layer's draw (main+0x3b5c71c) builds a viewport over the whole picture at x29 - 40 (min x +8, max x +16); after ldp x9, x8, [x19, #0x18] (main+0x3b5c758) it moves in
+#   by the margin on each side (state +0x164: (1 - squeeze) / 2 of the width), the middle 16:9. Count at state +0x16c. x16, x17 and s16..s19 are free there.
+# The stubs' words were assembled with clang from the source in this comment's commit; nop placeholders are the patch-relative instructions written below
+HUD_WORDS = (0xAD401041, 0xD503201F, 0xBD416210, 0x1E260211, 0x34000451, 0x1E260031, 0x52911130, 0x72A74110, 0x4A110210, 0x350003B0, 0x0E0C3C91, 0x52973AD0, 0x72A74E50,
+             0x4A110210, 0x35000310, 0xD106E011, 0xF9400231, 0xD503201F, 0xD503201F, 0xCA110210, 0xB4000250, 0xD503201F, 0xD503201F, 0xCA110210, 0xB40001D0, 0xD503201F,
+             0xD503201F, 0xCA110210, 0xB4000150, 0xD503201F, 0xD503201F, 0xCA110210, 0xB40000D0, 0x4F909021, 0xD503201F, 0xB9416A11, 0x11000631, 0xB9016A11, 0xD503201F)
+HUD_KEEP = (0x4bed098, 0x4be4fb0, 0x4be61c8, 0x4be7b30)   # item wheel background, pause / system menu backgrounds, event fade, loading fade
+MOVIE_WORDS = (0xD503201F, 0xBD416633, 0x1E260270, 0x340001B0, 0xD100A3B0, 0xBD400A10, 0xBD401211, 0x1E303A32, 0x1E330A52, 0x1E322A10, 0x1E323A31, 0xBD000A10,
+               0xBD001211, 0xB9416E30, 0x11000610, 0xB9016E30, 0xA941A269, 0xD503201F)
+def wide_hud(ctx):
+    here, emit, fs_site, fs_put, FS_STATE_OFF = ctx.here, ctx.emit, ctx.site, ctx.put, ctx.state
+    site = 0x774368
+    fs_site(site, (0xAD401041).to_bytes(4, 'little').hex())   # ldp q1, q4, [x2]
+    start = here(); keep = iter(HUD_KEEP); pending = None
+    for i, w in enumerate(HUD_WORDS):
+        if i in (1, 34): w = ADRP(16, here(), FS_STATE_OFF)                       # the state page
+        elif i in (17, 21, 25, 29): pending = next(keep); w = ADRP(16, here(), pending)   # a vtable that keeps the whole picture: its page
+        elif i in (18, 22, 26, 30): w = ADDI(16, 16, pending & 0xFFF)               # ... and its offset in the page
+        elif i == 38: w = B(here(), site + 4)                                         # back
+        emit(w)
+    fs_put(site, [B(site, start)], 'wide view: the HUD and menus keep 16:9 in the middle of the picture (Ivan0xFF\'s site, via NX2navi)')
+    site = 0x3b5c758
+    fs_site(site, (0xA941A269).to_bytes(4, 'little').hex())   # ldp x9, x8, [x19, #0x18]
+    start = here()
+    for i, w in enumerate(MOVIE_WORDS):
+        if i == 0: w = ADRP(17, here(), FS_STATE_OFF)
+        elif i == 17: w = B(here(), site + 4)
+        emit(w)
+    fs_put(site, [B(site, start)], 'wide view: movies in the middle 16:9 (Ivan0xFF\'s site, via NX2navi)')
+
 # The framework's half rate, asked for by the host. Some of this game counts calcs, not time: the timeline that fires its subtitles (PlaySubtitleWithVoice trigger events) and
 # its movie player, which takes one picture a calc (the limit at the player's +0x20 is 1 for the creation argument the game passes, main+0x3b5c55c). The frame ratio above
 # moves what reads the time object by real time, so below 60 fps the two fall apart: on an iPhone at 33 fps with the player let take two pictures a calc, the opening's
