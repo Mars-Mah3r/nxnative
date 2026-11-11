@@ -221,8 +221,12 @@ private struct LauncherView: View {
             Button("Try Again") { DispatchQueue.main.async { start() } }
             Button("Cancel", role: .cancel) {}
         } message: { r in Text(r.unreadableMessage(here: "iPhone")) }
-        .sheet(isPresented: $picking) {
-            DocumentPicker(types: [.folder]) { url in picking = false; importSave(url) } onCancel: { picking = false }
+        // SwiftUI's own importer: the folder picker as a sheet of the full-screen launcher came up blank on the phone
+        .fileImporter(isPresented: $picking, allowedContentTypes: [.folder, .zip], allowsMultipleSelection: false) { result in
+            switch result {
+            case .success(let urls): if let u = urls.first { importSave(u) }
+            case .failure(let e): note = "The picker could not open that: \(e.localizedDescription)"
+            }
         }
         .task {
             while !Task.isCancelled { memory = os_proc_available_memory(); try? await Task.sleep(for: .seconds(2)) }
@@ -376,7 +380,7 @@ private struct LauncherView: View {
                 words("Sends a copy of your save folder to Files, AirDrop or another app. Your saves stay on the phone.")
                 HLRow(title: "Export saves", value: "", chosen: true) { exportSaves() }
             case "import":
-                words("Replaces the game's saves with a save folder you choose. The saves you have now are copied to save-backups first.")
+                words("Replaces the game's saves with a save folder you choose (one with account.sav and slot folders, or a folder holding a \"save\" folder). The saves you have now are copied to save-backups first.")
                 HLRow(title: "Choose a save folder", value: "", chosen: true) { picking = true }
             case "log":
                 words("Sends the game's log of the last session, and the one before it. Share it when something looks or runs wrong.")
@@ -418,14 +422,19 @@ private struct LauncherView: View {
     // The chosen folder becomes Documents/save: it must hold a save (account.sav or a slot folder), and the saves there now go to save-backups first
     private func importSave(_ url: URL) {
         let fm = FileManager.default, scoped = url.startAccessingSecurityScopedResource(); defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-        guard let names = try? fm.contentsOfDirectory(atPath: url.path), names.contains(where: { $0 == "account.sav" || $0.hasPrefix("slot_") }) else { note = "That folder has no save in it (no account.sav or slot folder)."; return }
+        if url.pathExtension.lowercased() == "zip" { note = "Unzip it in Files first (tap the .zip), then choose the folder it makes."; return }
+        // the folder itself, or a save folder inside it (an exported "save" folder, or a backup folder that holds one)
+        var src = url
+        if let names = try? fm.contentsOfDirectory(atPath: url.path), !names.contains(where: { $0 == "account.sav" || $0.hasPrefix("slot_") }),
+           let inner = ["save", "save.work"].map({ url.appendingPathComponent($0) }).first(where: { (try? fm.contentsOfDirectory(atPath: $0.path))?.contains(where: { $0 == "account.sav" || $0.hasPrefix("slot_") }) == true }) { src = inner }
+        guard let names = try? fm.contentsOfDirectory(atPath: src.path), names.contains(where: { $0 == "account.sav" || $0.hasPrefix("slot_") }) else { note = "That folder has no save in it (no account.sav or slot folder)."; return }
         let save = docs.appendingPathComponent("save"), f = DateFormatter(); f.dateFormat = "yyyy-MM-dd HH.mm.ss"
         do {
             if let old = try? fm.contentsOfDirectory(atPath: save.path), !old.isEmpty {
                 let back = docs.appendingPathComponent("save-backups"); try fm.createDirectory(at: back, withIntermediateDirectories: true)
                 try fm.moveItem(at: save, to: back.appendingPathComponent(f.string(from: Date()) + " before import"))
             } else { try? fm.removeItem(at: save) }
-            try fm.copyItem(at: url, to: save)
+            try fm.copyItem(at: src, to: save)
             try? fm.removeItem(at: docs.appendingPathComponent("save.work"))
             note = "Imported. The saves you had are in save-backups."
         } catch { note = "The import failed: \(error.localizedDescription)" }
