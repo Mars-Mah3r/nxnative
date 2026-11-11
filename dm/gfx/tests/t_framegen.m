@@ -55,7 +55,9 @@ static int last_slot(void) { return (int)((g_snap_next + (uint64_t)g_snap_n - 1)
 @implementation TUpdate
 @end
 static double g_t = 100, g_tick_ms;   // g_tick_ms: how long the last tick's callback took (the drawable taken before it)
-static uint64_t tick(void) {   // one 60 Hz tick of the display link; returns the serial it showed (0 = none)
+static uint64_t tick_(void);
+static uint64_t tick(void) { @autoreleasepool { return tick_(); } }   // (a drawable a tick does not present goes back at once: three left in the pool made nextDrawable wait a second each)
+static uint64_t tick_(void) {   // one 60 Hz tick of the display link; returns the serial it showed (0 = none)
     TUpdate *u = [TUpdate new]; u.drawable = [g_test_layer nextDrawable]; u.targetPresentationTimestamp = g_t; g_t += 1 / 60.0;
     uint64_t n = g_present_n; g_present_ser = 0;
     uint64_t t0 = now_ns();
