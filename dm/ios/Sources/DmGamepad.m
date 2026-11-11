@@ -326,6 +326,7 @@ static BOOL fullOnly(int b) { return b == B_LS || b == B_RS || b >= B_LEFT; }   
             g_glassIdle = [UIColor colorWithWhite:1 alpha:0.04]; g_glassOn = [UIColor colorWithRed:0.55 green:0.85 blue:1 alpha:0.20];
         });
         _controls = [CALayer layer]; [self.layer addSublayer:_controls];
+        { const char *e = getenv("DM_PAD_OPACITY"); double o = e && *e ? atof(e) : 1.0; if (o < 0.2) o = 0.2; if (o > 1) o = 1; _controls.opacity = (float)o; }   // HookLink: the launcher's Touch controls opacity, over every layer the controls draw
         _ring = shape(_controls); _ring.fillColor = k_ringFill.CGColor;
         _knob = shape(_controls); _knob.strokeColor = k_knobLine.CGColor; _ring.strokeColor = k_knobLine.CGColor;
         CAShapeLayer *in = [CAShapeLayer layer]; in.fillColor = nil; in.strokeColor = k_knobLine.CGColor; in.lineWidth = 1.5;   // inner ring of the knob
@@ -337,6 +338,7 @@ static BOOL fullOnly(int b) { return b == B_LS || b == B_RS || b >= B_LEFT; }   
         }
         _nat = [CALayer layer]; [_controls addSublayer:_nat];   // the Native layout's layers, made in layoutSubviews (their sizes follow the screen)
         _menu = [DmMenuButton buttonWithType:UIButtonTypeCustom];
+        _menu.alpha = _controls.opacity;   // the menu button fades with the rest
         _menu.backgroundColor = k_menuFill; _menu.layer.borderColor = k_menuLine.CGColor; _menu.layer.borderWidth = 1.5;
         _menu.layer.shadowColor = UIColor.blackColor.CGColor; _menu.layer.shadowOpacity = 0.2; _menu.layer.shadowRadius = 3; _menu.layer.shadowOffset = CGSizeMake(0, 1);
         _menu.tintColor = k_text; _menu.accessibilityLabel = @"Menu";
