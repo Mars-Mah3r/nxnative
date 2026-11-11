@@ -16400,6 +16400,8 @@ static void link_sync(void) {   // Called every frame by the game's present thre
     static int vrr_was; int vrr = want == 1 && link_vrr_120();   // variable-refresh fullscreen that kept its mode: the 120 Hz link paces the 60 (link_vrr_120)
     if (vrr != vrr_was) { vrr_was = vrr; MLOG("display link: %s (frame %llu)", vrr ? "120 Hz in fullscreen on a variable-refresh screen, a frame every other tick (DM_PRESENT_LINK=1 keeps 60 Hz)" : "60 Hz again (window, fixed-rate screen or another frame rate)", (unsigned long long)atomic_load(&g_cur_frame)); }
     if (vrr) want = 2;
+    // HookLink: 60 fps with frame generation runs the 120 Hz link on a screen that has it, a frame every other tick, so the generated frame has a tick of its own between two presents
+    if (want == 1 && fg_on() && mtl_fps_target() == 60 && front_screen_max_fps() >= 120) want = 2;
     // The screen's rate changed (switched by front_screen_match, or another screen): the range again, virtual ticks or none. Taken only once the link object exists, so a change
     // while its thread starts (after link_main read the rate) is not lost
     static int hz_was; int hz = front_screen_max_fps(); CAMetalDisplayLink *lk = g_link;
