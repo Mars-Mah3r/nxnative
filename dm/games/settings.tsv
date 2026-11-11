@@ -14,14 +14,14 @@
 #   label, note  the setting's name and the line under it (may be empty; only for a setting with a cost: latency, memory, heat)
 #   meta      optional, key=value pairs separated by ; (settings.py META lists the keys; docs/frontends.md, The settings list, describes them):
 #             level=basic  a setting a front end shows first;  needs=<VAR>=<value>  a sub-setting, drawn only while the row that sets <VAR> has that value
-DM_FRAME_MODE	choice	0=60 fps,1=30 fps steady,2=30 fps + frame generation,3=60 fps + frame generation (experimental)	0	DM_GAME_FPS_TARGET!=0	Game	Frame rate mode	60 fps is the default. 30 fps steady runs cooler. Frame generation draws at that rate and shows twice as many frames (60, or 120 on a 120 Hz screen), with a little more input delay. A mode sets Frame rate, Frame generation and Hold frames when late for you.	level=basic
+DM_FRAME_MODE	choice	0=60 fps,1=30 fps steady,2=30 fps + frame generation,3=60 fps + frame generation (experimental)	2	DM_GAME_FPS_TARGET!=0	Game	Frame rate mode	30 fps + frame generation is the default: the game draws a steady 30 and the screen shows 60, cooler and smoother than 60 fps on most iPhones. 30 fps steady runs coolest. Frame generation draws at that rate and shows twice as many frames (60, or 120 on a 120 Hz screen), with a little more input delay. A mode sets Frame rate, Frame generation and Hold frames when late for you.	level=basic
 DM_FPS_TARGET	choice	30=30 fps,60=60 fps,120=120 fps?DM_GAME_FPS_MAX==120&platform:mac	DM_GAME_FPS_TARGET	DM_GAME_FPS_TARGET!=0	Game	Frame rate		level=basic
 DM_FRAMEGEN	toggle	-	0	gfxapi:nvn	Game	Frame generation	Shows 60 frames a second while the game draws 30: MetalFX makes a frame between each two. Less work and heat than 60 fps, with more input delay than real 60; fast motion can smear.	needs=DM_FPS_TARGET=30
 DM_DYNAMIC_RESOLUTION	toggle	-	0	fixups:DYNAMIC_RESOLUTION	Game	Dynamic resolution	Lets the game lower its resolution under load. Turn off to keep full resolution for the selected console mode.
 DM_RENDER_SCALE	range	0.5:1.0:0.05	1.0	fixups:RENDER_SCALE	Game	Render scale		level=basic
 DM_OPMODE	choice	1=Docked,0=Handheld	DM_GAME_OPMODE	always	Game	Console mode		level=basic
 DM_PRESENT_UPSCALE	choice	off=Standard,metalfx=MetalFX	off	always	Game	Upscaling	Uses more GPU time and can increase heat.
-DM_UPSCALER	choice	game=Game's own,metalfx=MetalFX	game	DM_GAME_UPSCALER_N!=0	Game	Game's upscaler
+DM_UPSCALER	choice	game=Game's own,metalfx=MetalFX	metalfx	DM_GAME_UPSCALER_N!=0	Game	Game's upscaler	MetalFX is the default in HookLink: Apple's scaler takes far less GPU time than the game's own network on an iPhone (HookLink issue 3: an iPhone 17 Pro ran 30 fps + frame generation at 14-20 ms of GPU with it)
 DM_LANG	choice	languages	build:DM_LANG	languages>1	Game	Game language		level=basic
 DM_FULLSCREEN	choice	0=Window,1=Fullscreen	0	platform:mac	Game	Display mode		level=basic
 DM_PICTURE_FIT	choice	fit=Fit,fill=Fill	fit	platform:ios	Game	Picture	Fill crops the game's 16:9 picture to cover the screen. Health bars, subtitles or maps near the edges can be cut off. A full-screen picture without cropping needs a patch for each game.
