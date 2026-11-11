@@ -27,8 +27,12 @@ zip_store	.zs:.bwav:.webm:.metallib
 # ---- Memory ----
 # The Switch 2 leaves games 9 GB of its 12 GB (Donkey Kong Bananza's figure). The NPDM declares 48 MB of system resource, so virtual address memory is on.
 # nninitStartup asks SetHeapSize 0x18ce00000 (6.2 GB) with the 9 GB pool, as Mario Kart World. 256 MB in front + 4 GB alias region + 256 MB stack region + 8 GB heap region: a starting split, to be measured
-mem_reserve	0x320000000
-mem_alias	0x100000000
+# HookLink: an iPhone gets an 8 GB alias region (the Mac has the Switch's 64 GB whatever this says). With 4 GB the game ran out of addresses when the Master Sword is pulled:
+# it had mapped up to +3.75 GB and the next scene's movie and files had no room, so it waited on a white screen for good (mem_map_limit on) or aborted in its loader
+# (main+0x34fc290, the limit off). On an iPhone 18 Pro Max with 8 GB it went on, mapped up to +6.00 GB and held 4.75 GB mapped, more than the 2.74 GB the limit left it
+# beside its 6.2 GB heap, so the limit is off (2026-11-10). mem_reserve grows by the same 4 GB: the heap region stays 8 GB.
+mem_reserve	0x420000000
+mem_alias	0x200000000
 mem_map_limit	off
 mem_stack	0x10000000
 app_pool	0x240000000
