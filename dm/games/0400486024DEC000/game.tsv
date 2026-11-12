@@ -80,10 +80,12 @@ gpu_timestamps	segment
 upscaler_chain	f8965bffbdf51d78,d17eefaff4f0bc23,a335c1db6270c355>aad7ea7e5c02f41d|b106afba1a18faa9|fa3033d05c0a41d6|04135bb812a0d66e|8df148d58b7cbe8e
 # Colour render targets drawn only as attachments (RGBA8 / BGRA8 / RGBA16F) kept with Metal lossy compression (rt_lossy, nvn_mtl.m rt_lossy): about 100 MB less in Link's house at 720p;
 # the scene colour (RG11B10F) and depth have no lossy form
-rt_lossy	on
+# HookLink 1.8.1: off again, as 1.5.1 and 1.7 ran (1.8 took it on with the steady 30 fps merge); 60 fps restarted an iPhone 18 Pro Max once on 1.8
+rt_lossy	off
 # The game's compute dispatches with no barrier of its between them run side by side (nvn_mtl.m dispatch_enc): 117 at the start of a frame in Kokiri Forest waited each for the one
 # before, 5.7 ms; side by side 3.7 ms, the frame 27.1 -> 24.9 ms (docked, Apple M4 Pro), the picture within run-to-run noise (from the Mighty Green Kokiri Kid fork, 5208584a)
-dispatch_overlap	on
+# HookLink 1.8.1: off again, as 1.5.1 and 1.7 ran
+dispatch_overlap	off
 # One Render scale slider in place of the Resolution row (Normal / Potato): a fixed fraction of the game's base size (render_base: 2560x1440 docked, 1920x1080
 # handheld), from 0.25 (480x270 handheld, marked Potato) to 1.0 (1920x1080); 0.667 is the old Normal's 1280x720. The render-scale stub (patches.py) fixes every value up to 1.0
 res_presets	off
