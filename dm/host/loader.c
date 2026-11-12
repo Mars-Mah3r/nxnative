@@ -330,6 +330,8 @@ void dm_fps_state_apply(void) {
     const char *dr = getenv("DM_DYNAMIC_RESOLUTION"); uint32_t dyn = dr && !strcmp(dr, "1");
     if (dr && strcmp(dr, "0") && strcmp(dr, "1")) LOG("[RED] DM_DYNAMIC_RESOLUTION=%s: must be 0 or 1; keeping full resolution", dr);
     memcpy(dm_fps_state + 0x40, &dyn, sizeof dyn);
+    // A full model heap (Ocarina of Time's patches.py heap_retry): DM_HEAP_RETRY=0 writes 1 at +0x17c, and the game's allocations that found their heap full stay as shipped
+    { const char *hr = getenv("DM_HEAP_RETRY"); if (hr && !strcmp(hr, "0")) { uint32_t off = 1; memcpy(dm_fps_state + 0x17c, &off, 4); LOG("%s: full model heap retry off (DM_HEAP_RETRY=0)", g_fps_mod); } }
     // Wide view (Ocarina of Time's patches.py wide_view): DM_WIDE_VIEW=1 with DM_WIDE_ASPECT, the screen's width / height from 1.8 to 2.6 (set by the iOS front end), makes the game's
     // output and render widths follow the screen, multiples of 16: +0x100 u32 the 1440-high width, +0x104 the 1080-high width, +0x108 the former as a float, +0x10c the ratio in 16.16. 0 = 16:9
     { const char *wv = getenv("DM_WIDE_VIEW"), *wa = getenv("DM_WIDE_ASPECT"); char *wend = NULL; float wr = wa ? strtof(wa, &wend) : 0;

@@ -1983,6 +1983,8 @@ static void power_line(uint64_t frame) {
         double nf = frame > pf ? (double)(frame - pf) : 1;   // per frame: the fair comparison when one build holds the frame rate better than another
         LOG("[nvn] power up to frame %llu: CPU energy %.2f W, %.1f mJ per frame (%.1f fps); CPU %.0f%% (100 = one core), %.0f%% of it on performance cores; wakeups %.0f/s (out of platform idle %.0f); GPU %.1f ms/s; thermal %d; top yielders: %s", frame,
             (e - pe) / 1e9 / s, (e - pe) / 1e6 / nf, nf / s, (cpu - pcpu) / 1e7 / s, cpu > pcpu ? 100.0 * (double)(p - pp) / (double)(cpu - pcpu) : 0, (iw - piw) / s, (idw - ppw) / s, (g - pg) / 1e6 / s, dm_thermal_now(), yt);
+        if (dm_fps_state) { uint32_t hc, hg; memcpy(&hc, dm_fps_state + 0x170, 4); memcpy(&hg, dm_fps_state + 0x174, 4);   // patches.py heap_retry
+            static uint32_t phc, phg; if (hc != phc || hg != phg) { LOG("[nvn] full model heap up to frame %llu: %u CPU buffers made in a parent heap, %u GPU blocks made in a parent or the default heap (so far)", frame, hc, hg); phc = hc; phg = hg; } }
         if (dm_fps_state) { float wc, wo; uint32_t wm, ww; memcpy(&wc, dm_fps_state + 0x110, 4);   // Wide view's camera stub (Ocarina's patches.py wide_view): matrices built, widened, last other ratio
             if (wc > 0) { memcpy(&wm, dm_fps_state + 0x120, 4); memcpy(&ww, dm_fps_state + 0x124, 4); memcpy(&wo, dm_fps_state + 0x128, 4);
                 uint32_t sc[11]; memcpy(sc, dm_fps_state + 0x130, sizeof sc);   // passes of each aspect store site (patches.py wide_view, in its order)
