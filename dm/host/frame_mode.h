@@ -9,11 +9,11 @@
 #include <stdlib.h>
 #include <string.h>
 static inline void dm_frame_mode_apply(void) {
-    // HookLink 1.8.1: HookLink's iPhone preset fixed DM_RT_COMP=12 (the game thread's real-time computation) since 0.1, a value for 60 fps. With 30 fps it overran
-    // its declaration on most frames and iOS stalled the thread (every frame late in a 1.8 log); measured (auto) it held 30. An app older than 1.8.1 still packs
+    // HookLink 1.8.5: HookLink's iPhone preset fixed DM_RT_COMP=12 (the game thread's real-time computation) since 0.1, a value for 60 fps. With 30 fps it overran
+    // its declaration on most frames and iOS stalled the thread (every frame late in a 1.8 log); measured (auto) it held 30. An app older than 1.8.5 still packs
     // that preset, so its 12 is taken as auto here; another value, or 12 asked for with DM_RT_COMP_FIXED=1, stays
     { const char *rc = getenv("DM_RT_COMP"), *fx = getenv("DM_RT_COMP_FIXED");
-      if (rc && !strcmp(rc, "12") && !(fx && atoi(fx))) { setenv("DM_RT_COMP", "auto", 1); fprintf(stderr, "frame rate mode: DM_RT_COMP=auto replaces the preset's fixed 12 ms (HookLink 1.8.1)\n"); } }
+      if (rc && !strcmp(rc, "12") && !(fx && atoi(fx))) { setenv("DM_RT_COMP", "auto", 1); fprintf(stderr, "frame rate mode: DM_RT_COMP=auto replaces the preset's fixed 12 ms (HookLink 1.8.5)\n"); } }
     const char *e = getenv("DM_FRAME_MODE"); int m = e ? atoi(e) : 0;
     if (m < 1 || m > 3) return;
     static const char *const names[4] = { "", "30 fps, steady", "30 fps + frame generation (shown at 60)", "60 fps + frame generation (shown at 120)" };
