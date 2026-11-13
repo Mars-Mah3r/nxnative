@@ -26,6 +26,7 @@ DM_LANG	choice	languages	build:DM_LANG	languages>1	Game	Game language		level=bas
 DM_FULLSCREEN	choice	0=Window,1=Fullscreen	0	platform:mac	Game	Display mode		level=basic
 DM_PICTURE_FIT	choice	fit=Fit,fill=Fill	fit	platform:ios	Game	Picture	Fill crops the game's 16:9 picture to cover the screen. Health bars, subtitles or maps near the edges can be cut off. A full-screen picture without cropping needs a patch for each game.
 DM_SHOW_FPS	toggle	-	build:DM_SHOW_FPS	platform:ios	Game	Frame-rate counter
+DM_SHOW_HEAT_BATTERY	toggle	-	0	platform:ios	Game	Heat and battery	Adds the phone's heat and the battery with the play time it leaves under the frame rate.	needs=DM_SHOW_FPS=1
 DM_FRAMEGEN_SCALE	choice	1=Full,0.75=Lighter	1	gfxapi:nvn	Game	Frame generation size	Lighter makes the in-between frames at 0.75 of the picture's size, and MetalFX scales the picture back up: about half of frame generation's GPU time, for a slightly softer picture, the HUD too. Recommended: Full; Lighter if frames drop in busy areas.	needs=DM_FRAMEGEN=1
 DM_TOUCH_HAPTICS	toggle	-	1	platform:ios	Controls	Touch feedback
 DM_PAD_THEME	choice	0=Classic,1=Forest,2=Glass	DM_GAME_PAD_THEME	platform:ios	Controls	Touch controls style	The colours of the on-screen controls.
