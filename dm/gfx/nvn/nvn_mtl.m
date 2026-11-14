@@ -14134,10 +14134,13 @@ static void draw_(const p_draw *dw, const p_draw_idx *di);
 static id<MTLResidencySet> g_snap_res;   // the present snapshots' residency set (snap_take), which the host's copies without the HUD join
 static int fg_on(void);
 static int g_fgui_mode = -1;
+// 1 (the default): MetalFX interpolates the scenes alone and fgmv_ui puts the present's HUD back where its picture and its scene differ (fg_ui_comp); 2: MetalFX takes the HUD
+// apart itself (uiTexture, uiTextureComposited), which cost twice the interpolation's GPU time on an iPhone Duo (9 ms against 4.4, phone log 2026-11-14); 0: off
 static int fg_ui_on(void) {
     if (g_fgui_mode >= 0) return g_fgui_mode;
-    const char *e = getenv("DM_FRAMEGEN_UI"); int v = DM_GAME_UI_N > 0 && fg_on() && !(e && atoi(e) <= 0);
-    if (DM_GAME_UI_N > 0 && fg_on()) MLOG("frame generation: HUD layer %s (DM_FRAMEGEN_UI; %d HUD shaders from the shader map)", v ? "on: the scene is interpolated and the HUD put back unmoved" : "off", DM_GAME_UI_N);
+    const char *e = getenv("DM_FRAMEGEN_UI"); int v = DM_GAME_UI_N > 0 && fg_on() ? (e ? (atoi(e) == 2 ? 2 : atoi(e) > 0) : 1) : 0;
+    if (DM_GAME_UI_N > 0 && fg_on()) MLOG("frame generation: HUD layer %s (DM_FRAMEGEN_UI=%d; %d HUD shaders from the shader map)", v == 1 ? "on: the scene is interpolated and the present's HUD put back where it differs from its scene"
+                                          : v == 2 ? "on: MetalFX takes the HUD apart" : "off", v, DM_GAME_UI_N);
     return g_fgui_mode = v;
 }
 static int fg_ui_shader(NvShader *fs) {
@@ -14155,8 +14158,8 @@ static struct { uint64_t ser; id<MTLTexture> pre, pre_old; NSUInteger w, h, fmt;
 // such texture (at least 640x360; the small ones are icons and captions drawn for the HUD), pre its copy at the frame's first HUD draw, the scene alone; tmp holds it with the HUD
 // while the draw that brings it into a window texture runs once with the scene alone (fg_ui_final). pend: 1 a copy taken this frame (reset at each present)
 #define FGUH_MAX 4
-static struct { uint64_t ser; id<MTLTexture> pre, tmp; NSUInteger w, h, fmt; int pend; uint64_t swaps; } g_fguh[FGUH_MAX];
-static uint64_t g_fgui_ui_draws, g_fgui_off_win, g_fgui_small, g_fgui_skip_clear, g_fgui_skip_pass, g_fgui_no_tex, g_fgui_nofinal, g_fgui_swaps;   // fg_ui_log's counts
+static struct { uint64_t ser; id<MTLTexture> pre, tmp; NSUInteger w, h, fmt; int pend, reach; uint64_t swaps, last; } g_fguh[FGUH_MAX];   // reach: seen sampled into a window texture; last: g_fgui_draws_n at its last HUD draw (slot reuse)
+static uint64_t g_fgui_clears, g_fgui_ui_draws, g_fgui_off_win, g_fgui_small, g_fgui_skip_clear, g_fgui_skip_pass, g_fgui_no_tex, g_fgui_nofinal, g_fgui_swaps;   // fg_ui_log's counts
 static struct { uint64_t ser; uint32_t w, h, fmt; int win; uint64_t draws; } g_fgui_tgt[8]; static int g_fgui_ntgt;   // the targets HUD draws wrote (the first 8)
 static char g_fgui_wfs[4][17]; static int g_fgui_nwfs;   // the fragment shaders drawing into a window texture (the first 4)
 static int g_fgui_in;   // fg_ui_final's own draw: no hook
@@ -14189,7 +14192,10 @@ static void fg_ui_final(const tex_t *w, const p_draw *dw, const p_draw_idx *di) 
             strlcpy(g_fgui_wfs[g_fgui_nwfs++], pr->sh[1]->key, 17);
             MLOG("frame generation: fragment shader %.16s draws into window texture %llu%s%s", pr->sh[1]->key, (unsigned long long)w->serial, hs >= 0 ? ", sampling the HUD's texture " : ", sampling no HUD texture",
                  hs >= 0 ? [NSString stringWithFormat:@"%llu", (unsigned long long)g_fguh[hs].ser].UTF8String : ""); } }
-    int h = -1; for (int j = 0; j < FGUH_MAX && h < 0; j++) if (g_fguh[j].pend == 1 && S.prog && prog_samples_ser(S.prog, S.tex, S.img, g_fguh[j].ser)) h = j;
+    int h = -1;
+    for (int j = 0; j < FGUH_MAX; j++) if (g_fguh[j].ser && S.prog && prog_samples_ser(S.prog, S.tex, S.img, g_fguh[j].ser)) {
+        if (!g_fguh[j].reach) { g_fguh[j].reach = 1; MLOG("frame generation: texture %llu takes the HUD and reaches window texture %llu: copied at the HUD's first draw of each frame from now on", (unsigned long long)g_fguh[j].ser, (unsigned long long)w->serial); }
+        if (h < 0 && g_fguh[j].pend == 1) h = j; }
     if (h < 0) return;
     g_fguh[h].pend = 2;   // once a frame
     int i = fg_ui_slot(w->serial);
@@ -14230,8 +14236,8 @@ static void fg_ui_draw(NvShader *fs, const p_draw *dw, const p_draw_idx *di) {
         int i = fg_ui_slot(t->serial);
         if (i < 0 || !g_fgui[i].pre) { g_fgui_no_tex++; return; }   // made at this window texture's next present (snap_take)
         if (g_fgui[i].pend) return;   // taken at this frame's first HUD draw, or none can be
-        if (!g_enc && R.clear_c[0]) { g_fgui_skip_clear++; g_fgui[i].pend = 2; return; }   // the clear is not done yet: the picture without the HUD is that clear
         if (fg_ui_busy()) { g_fgui_skip_pass++; g_fgui[i].pend = 2; return; }
+        if (!g_enc && R.clear_c[0]) { rp_begin_ex(1); g_fgui_clears++; }   // the HUD over a clear (a menu): the clear first, which is then the picture without the HUD
         if (m.width != g_fgui[i].pre.width || m.height != g_fgui[i].pre.height || m.pixelFormat != g_fgui[i].pre.pixelFormat) { g_fgui_no_tex++; g_fgui[i].pend = 2; return; }
         NSUInteger r[4]; fg_ui_crop(i, m, r);
         rp_end();   // the HUD's draw opens its pass again, loading what the scene left
@@ -14242,17 +14248,26 @@ static void fg_ui_draw(NvShader *fs, const p_draw *dw, const p_draw_idx *di) {
     g_fgui_off_win++;
     if (m.width < 640 || m.height < 360) { g_fgui_small++; return; }
     int h = fguh_slot(t->serial);
-    if (h < 0) { for (int j = 0; j < FGUH_MAX && h < 0; j++) if (!g_fguh[j].ser) h = j;
-        if (h < 0) { RED_ONCE(162, "frame generation: more than %d textures take the HUD; the HUD stays in the picture for the others", FGUH_MAX); return; }
-        g_fguh[h].ser = t->serial; }
+    if (h < 0) {   // a free slot, else the one never seen reaching a window texture that the HUD drew into least recently (its textures go with it)
+        for (int j = 0; j < FGUH_MAX && h < 0; j++) if (!g_fguh[j].ser) h = j;
+        for (int j = 0; j < FGUH_MAX && h < 0; j++) if (!g_fguh[j].reach && (h < 0 || g_fguh[j].last < g_fguh[h].last)) h = j;
+        if (h < 0) { RED_ONCE(162, "frame generation: more than %d textures take the HUD into window textures; the HUD stays in the picture for the others", FGUH_MAX); return; }
+        if (g_fguh[h].pre) { [g_snap_res removeAllocation:g_fguh[h].pre]; [g_snap_res removeAllocation:g_fguh[h].tmp]; [g_snap_res commit]; }   // never used by a draw (never reached)
+        g_fguh[h] = (typeof(g_fguh[0])){0}; g_fguh[h].ser = t->serial; }
+    g_fguh[h].last = g_fgui_ui_draws;
+    if (!g_fguh[h].reach) return;   // its textures are made once a draw has been seen bringing it into a window texture (fg_ui_final)
     if (!g_fguh[h].pre || g_fguh[h].w != m.width || g_fguh[h].h != m.height || g_fguh[h].fmt != m.pixelFormat) {   // the old ones stay with the frames that use them (a size change is rare)
         id<MTLTexture> a = fgui_tex(m), b = fgui_tex(m); if (!a || !b) return;
         g_fguh[h].pre = a; g_fguh[h].tmp = b; g_fguh[h].w = m.width; g_fguh[h].h = m.height; g_fguh[h].fmt = m.pixelFormat; g_fguh[h].pend = 0;
-        MLOG("frame generation: texture %llu (%lux%lu format %lu) takes the HUD: copied at the HUD's first draw of each frame", (unsigned long long)t->serial, (unsigned long)m.width, (unsigned long)m.height, (unsigned long)m.pixelFormat);
+        MLOG("frame generation: texture %llu (%lux%lu format %lu) takes the HUD: its copies made", (unsigned long long)t->serial, (unsigned long)m.width, (unsigned long)m.height, (unsigned long)m.pixelFormat);
+        return;
     }
     if (g_fguh[h].pend) return;   // this frame's copy is taken (or none can be)
-    if (!g_enc && R.clear_c[0]) { g_fgui_skip_clear++; g_fguh[h].pend = 3; return; }
+    if (!g_fguh[h].reach) return;   // copied only once a draw has been seen bringing it into a window texture (fg_ui_final): the HUD's other targets (a map, a preview) cost nothing
     if (fg_ui_busy()) { g_fgui_skip_pass++; g_fguh[h].pend = 3; return; }
+    // The HUD over a clear (the save and system menus draw on a cleared texture; 1,201 such frames in the phone log of 2026-11-14 had no copy and their menu smeared): the clear
+    // first, which is then the picture without the HUD
+    if (!g_enc && R.clear_c[0]) { rp_begin_ex(1); g_fgui_clears++; }
     rp_end();
     fg_ui_copy(m, g_fguh[h].pre, 0, 0, m.width, m.height);
     g_fguh[h].pend = 1;
@@ -17097,15 +17112,15 @@ static int fg_on(void) {
     return g_fg_mode = v;
 }
 // DM_FRAMEGEN_MV (default 1): frame generation's motion from the presented pictures (fg_motion) and the still HUD kept (fg_keep); 0: no motion, as X6-X9
-static id<MTLComputePipelineState> g_fgmv_ps[6]; static id<MTL4ArgumentTable> g_fgmv_args; static int g_fgmv_ok = -1;
-enum { FGMV_LUMA, FGMV_SEARCH, FGMV_PICK, FGMV_STILL, FGMV_HUD, FGMV_KEEP };
+static id<MTLComputePipelineState> g_fgmv_ps[7]; static id<MTL4ArgumentTable> g_fgmv_args; static int g_fgmv_ok = -1;
+enum { FGMV_LUMA, FGMV_SEARCH, FGMV_PICK, FGMV_STILL, FGMV_HUD, FGMV_KEEP, FGMV_UI };
 static int fg_mv_on(void) {
     if (g_fgmv_ok >= 0) return g_fgmv_ok;
     const char *e = getenv("DM_FRAMEGEN_MV");
     if (e && atoi(e) <= 0) { MLOG("frame generation: no motion given to the interpolator (DM_FRAMEGEN_MV=0): its own flow finds it, up to about 64 px a frame"); return g_fgmv_ok = 0; }
     NSError *err = nil; id<MTLLibrary> lib = host_lib("fgmv", &err);
-    static const char *fn[6] = {"fgmv_luma", "fgmv_search", "fgmv_pick", "fgmv_still", "fgmv_hud", "fgmv_keep"};
-    for (int i = 0; i < 6; i++) {
+    static const char *fn[7] = {"fgmv_luma", "fgmv_search", "fgmv_pick", "fgmv_still", "fgmv_hud", "fgmv_keep", "fgmv_ui"};
+    for (int i = 0; i < 7; i++) {
         id<MTLFunction> f = lib ? [lib newFunctionWithName:@(fn[i])] : nil;
         g_fgmv_ps[i] = f ? [g_dev newComputePipelineStateWithFunction:f error:&err] : nil;
         if (!g_fgmv_ps[i]) { MLOG("[RED] frame generation: no %s pipeline (%s): the interpolator gets no motion, as X6-X9", fn[i], err.description.UTF8String); return g_fgmv_ok = 0; }
@@ -17161,7 +17176,7 @@ static id<MTL4FXFrameInterpolator> fg_for(id<MTLTexture> col) {
     d.colorTextureFormat = col.pixelFormat; d.outputTextureFormat = col.pixelFormat;
     d.depthTextureFormat = MTLPixelFormatDepth32Float; d.motionTextureFormat = MTLPixelFormatRG16Float;
     d.inputWidth = iw; d.inputHeight = ih; d.outputWidth = col.width; d.outputHeight = col.height;
-    if (fg_ui_on()) d.uiTextureFormat = col.pixelFormat;   // the HUD layer: the present's picture with the HUD (fg_encode)
+    if (fg_ui_on() == 2) d.uiTextureFormat = col.pixelFormat;   // the HUD layer by MetalFX: the present's picture with the HUD (fg_encode)
     id<MTL4FXFrameInterpolator> fi = g_fg_comp ? [d newFrameInterpolatorWithDevice:g_dev compiler:g_fg_comp] : nil;
     if (!fi) { MLOG("[RED] frame generation: MetalFX makes no frame interpolator for %lux%lu format %lu; frames of this size are shown as the game draws them", (unsigned long)col.width, (unsigned long)col.height, (unsigned long)col.pixelFormat); return nil; }
     MTLTextureDescriptor *dd = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatDepth32Float width:iw height:ih mipmapped:NO];
@@ -17187,7 +17202,7 @@ static id<MTL4FXFrameInterpolator> fg_for(id<MTLTexture> col) {
         g_fg_heap = [g_dev newCounterHeapWithDescriptor:hd error:&err]; g_fg_tsbuf = [g_dev newBufferWithLength:8 options:MTLResourceStorageModePrivate];
         if (g_fg_tsbuf) { [g_snap_res addAllocation:g_fg_tsbuf]; [g_snap_res commit]; }
         if (!g_fg_heap || !g_fg_tsbuf) { MLOG("frame generation: no timestamp heap (%s): its GPU time is not logged", err.description.UTF8String); g_fg_heap = nil; } }
-    if (fg_ui_on()) MLOG("frame generation: the interpolator takes the HUD apart (UI texture format %lu, usage %#lx; the picture's %#lx)", (unsigned long)fi.uiTextureFormat, (unsigned long)fi.uiTextureUsage,
+    if (fg_ui_on() == 2) MLOG("frame generation: the interpolator takes the HUD apart (UI texture format %lu, usage %#lx; the picture's %#lx)", (unsigned long)fi.uiTextureFormat, (unsigned long)fi.uiTextureUsage,
                          (unsigned long)(MTLTextureUsageShaderRead | MTLTextureUsageRenderTarget));
     MLOG("frame generation: MetalFX frame interpolator %lux%lu format %lu (depth and motion %lux%lu%s), made in %.1f ms", (unsigned long)col.width, (unsigned long)col.height,
          (unsigned long)col.pixelFormat, (unsigned long)iw, (unsigned long)ih, mv ? (fg_keep_fmt(col.pixelFormat) ? ", motion found, HUD kept" : ", motion found; this format cannot be written, the HUD is not kept") : "", (now_ns() - t0) / 1e6);
@@ -17311,6 +17326,15 @@ static void fg_keep(id<MTL4CommandBuffer> cb, int k, int pk, id<MTLTexture> gen)
 // After slot k's copy in cb: the frame between the previous present (slot pk, when it holds the present just before) and slot k's into slot k's gen texture.
 // Sets g_snap[k].gen_ok when the texture holds one to show. period: the present's interval (seconds)
 static void fg_ui_count(int ui, int has, int prev_has);
+// After the interpolation of slot k's scene: the present's picture where it differs from its scene, its HUD, written over the generated frame (fgmv_ui)
+static void fg_ui_comp(id<MTL4CommandBuffer> cb, int k, id<MTLTexture> gen) {
+    id<MTL4ComputeCommandEncoder> ce = [cb computeCommandEncoder];
+    [ce barrierAfterQueueStages:MTLStageAll beforeStages:MTLStageDispatch visibilityOptions:resource_vis()];   // after MetalFX's encoders
+    [ce setArgumentTable:g_fgmv_args];
+    fgmv_bind(ce, FGMV_UI, g_snap[k].tex, g_snap[k].scene, gen, nil); fgmv_grid(ce, gen.width, gen.height);
+    [ce barrierAfterStages:MTLStageDispatch beforeQueueStages:MTLStageAll visibilityOptions:resource_vis()];   // the present reads gen
+    [ce endEncoding];
+}
 static void fg_encode(id<MTL4CommandBuffer> cb, int k, int pk, double period) {
     g_snap[k].gen_ok = 0;
     id<MTLTexture> col = g_snap[k].tex, prev = pk >= 0 ? g_snap[pk].tex : nil;
@@ -17321,16 +17345,18 @@ static void fg_encode(id<MTL4CommandBuffer> cb, int k, int pk, double period) {
     // The HUD apart (fg_ui_snap): both presents' scenes, and this present's picture as the UI texture, MetalFX taking the HUD out of it and putting it back on the frame it makes
     int ui = follows && g_snap[k].scene_ok && g_snap[pk].scene_ok && g_snap[k].scene.width == col.width && g_snap[k].scene.height == col.height
              && g_snap[pk].scene.width == col.width && g_snap[pk].scene.height == col.height;
+    if (ui && fg_ui_on() == 1 && !(fg_mv_on() && fg_keep_fmt(col.pixelFormat))) ui = 0;   // fgmv_ui cannot write this format (or has no pipeline): the whole picture, as before
     int keep = mv && fg_keep_fmt(col.pixelFormat) && !ui;
+    int comp = ui && fg_ui_on() == 1;   // fgmv_ui puts the HUD back (2: MetalFX's own way)
     if (follows) fg_ui_count(ui, g_snap[k].scene_ok, g_snap[pk].scene_ok);
     if (!follows) {   // nothing to generate from: the history starts again with this present (the next one interpolates from it)
         if (g_fg_warm) g_fg_resets++;
         g_fg_warm = 0; return;
     }
     id<MTLTexture> gen = g_snap[k].gen;
-    if (!gen || gen.width != col.width || gen.height != col.height || gen.pixelFormat != col.pixelFormat) {
+    if (!gen || gen.width != col.width || gen.height != col.height || gen.pixelFormat != col.pixelFormat || (fg_ui_on() == 1 && fg_keep_fmt(col.pixelFormat) && !(gen.usage & MTLTextureUsageShaderWrite))) {
         MTLTextureDescriptor *d = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:col.pixelFormat width:col.width height:col.height mipmapped:NO];
-        d.storageMode = MTLStorageModePrivate; d.usage = fi.outputTextureUsage | MTLTextureUsageShaderRead | (fg_mv_on() && fg_keep_fmt(col.pixelFormat) ? MTLTextureUsageShaderWrite : 0);
+        d.storageMode = MTLStorageModePrivate; d.usage = fi.outputTextureUsage | MTLTextureUsageShaderRead | ((fg_mv_on() || fg_ui_on() == 1) && fg_keep_fmt(col.pixelFormat) ? MTLTextureUsageShaderWrite : 0);
         g_snap[k].gen_old = gen;   // resident until the slot's next use, as the slot's old texture (snap_take)
         gen = [g_dev newTextureWithDescriptor:d]; if (!gen) { RED_ONCE(156, "frame generation: no texture for the generated frame"); return; }
         [g_snap_res addAllocation:gen]; [g_snap_res commit];
@@ -17355,13 +17381,14 @@ static void fg_encode(id<MTL4CommandBuffer> cb, int k, int pk, double period) {
     [ce barrierAfterStages:MTLStageBlit | MTLStageDispatch beforeQueueStages:MTLStageAll visibilityOptions:resource_vis()];
     [ce endEncoding];
     fi.colorTexture = ui ? g_snap[k].scene : col; fi.prevColorTexture = ui ? g_snap[pk].scene : prev; fi.outputTexture = gen;
-    if (fg_ui_on()) { fi.uiTexture = ui ? col : nil; fi.uiTextureComposited = ui; }
+    if (fg_ui_on() == 2) { fi.uiTexture = ui ? col : nil; fi.uiTextureComposited = ui; }
     fi.depthTexture = g_fg_depth; fi.motionTexture = g_fg_motion; fi.motionVectorScaleX = 1; fi.motionVectorScaleY = 1;
     fi.deltaTime = (float)period; fi.nearPlane = 0.1f; fi.farPlane = 1000; fi.fieldOfView = 60; fi.aspectRatio = (float)col.width / (float)col.height;
     fi.jitterOffsetX = 0; fi.jitterOffsetY = 0; fi.depthReversed = YES;
     fi.shouldResetHistory = g_fg_warm == 0;
     [fi encodeToCommandBuffer:cb];
     if (keep) fg_keep(cb, k, pk, gen);
+    if (comp) fg_ui_comp(cb, k, gen);
     if (g_fg_heap) {   // after everything the interpolation ran (and the HUD kept)
         id<MTL4ComputeCommandEncoder> te = [cb computeCommandEncoder];
         [te barrierAfterQueueStages:MTLStageAll beforeStages:MTLStageBlit visibilityOptions:MTL4VisibilityOptionNone];   // the copy below is a blit
@@ -17422,9 +17449,9 @@ static void fg_ui_count(int ui, int has, int prev_has) {
     n++; if (ui) used++; else if (!has) none++; else if (!prev_has) prev_none++;
     if (n == 1 || n % 600) return;
     MLOG("frame generation: HUD layer in %llu of the last 600 generated frames (without: %llu no copy of this present, %llu none of the one before); HUD draws %llu (%llu into other textures, %llu of them small), "
-         "window pictures drawn without the HUD %llu, frames whose HUD texture reached no window texture %llu; copies not taken: %llu at a clear, %llu in a deferred, merged or multi-draw pass, %llu with no texture yet",
+         "window pictures drawn without the HUD %llu, frames whose HUD texture reached no window texture %llu; HUD over a clear %llu; copies not taken: %llu at a clear, %llu in a deferred, merged or multi-draw pass, %llu with no texture yet",
          (unsigned long long)used, (unsigned long long)none, (unsigned long long)prev_none, (unsigned long long)g_fgui_ui_draws, (unsigned long long)g_fgui_off_win, (unsigned long long)g_fgui_small,
-         (unsigned long long)g_fgui_swaps, (unsigned long long)g_fgui_nofinal, (unsigned long long)g_fgui_skip_clear, (unsigned long long)g_fgui_skip_pass, (unsigned long long)g_fgui_no_tex);
+         (unsigned long long)g_fgui_swaps, (unsigned long long)g_fgui_nofinal, (unsigned long long)g_fgui_clears, (unsigned long long)g_fgui_skip_clear, (unsigned long long)g_fgui_skip_pass, (unsigned long long)g_fgui_no_tex);
     used = none = prev_none = 0;
 }
 static void snap_commit_wait(uint64_t v) { if (v) rec_note_wait(&g_snap_cmt, v); }

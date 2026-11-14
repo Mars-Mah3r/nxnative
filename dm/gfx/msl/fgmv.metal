@@ -136,3 +136,11 @@ kernel void fgmv_keep(texture2d<float, access::read> cur [[texture(0)]], texture
     if (g.x >= out.get_width() || g.y >= out.get_height()) return;
     if (keep.read(min(g / 4, uint2(keep.get_width() - 1, keep.get_height() - 1))).r > 0.5h) out.write(cur.read(g), g);
 }
+// Frame generation's HUD layer (nvn_mtl.m fg_ui_comp): cur is the present's picture and scene the same picture drawn without the HUD by the same draw (fg_ui_final), so the two
+// differ exactly where the HUD is, its soft edges and see-through parts included. There the generated frame takes the present's pixel: the HUD unmoved at the game's own rate
+kernel void fgmv_ui(texture2d<float, access::read> cur [[texture(0)]], texture2d<float, access::read> scene [[texture(1)]], texture2d<float, access::write> out [[texture(2)]],
+                    uint2 g [[thread_position_in_grid]]) {
+    if (g.x >= out.get_width() || g.y >= out.get_height()) return;
+    float4 c = cur.read(g);
+    if (any(c != scene.read(g))) out.write(c, g);
+}
