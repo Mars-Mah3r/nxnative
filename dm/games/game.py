@@ -116,6 +116,20 @@ def upscaler_keys(g):
     return sorted(keys)
 
 
+UI_SOURCE = re.compile(r'/Layout2Shader/')
+
+
+def ui_keys(g):
+    """the game's HUD shaders, from its shader map: the pixel shaders of Nintendo's Layout2 UI (frame generation's HUD layer, nvn_mtl.m fg_ui_draw); sorted 16-digit keys, none without a map"""
+    p = g.table('shader_map.tsv')
+    if not p.exists(): return []
+    keys = set()
+    for line in p.read_text(encoding='utf-8').splitlines():
+        c = line.split('\t')
+        if len(c) >= 5 and c[2] == 'pixel' and UI_SOURCE.search(c[4]) and re.fullmatch(r'[0-9a-f]{16}', c[3]): keys.add(c[3])
+    return sorted(keys)
+
+
 def header(g):
     """game_profile.h of a profile: one profile's constants, or with the key programs (a multi-program application packed as one game: Super Mario 3D All-Stars) a table of its programs' profiles"""
     return header_multi([(0, g)] + [(int(n), load(i)) for n, i in g.pairs('programs')]) if g.get('programs', '') else header_one(g)
@@ -210,6 +224,7 @@ def header_one(g):
     mml = g.get('mem_map_limit', 'off')   # MapPhysicalMemory refused beyond the application pool, as on Horizon (hle_svc.c): on / off
     if mml not in ('on', 'off'): sys.exit(f'{g.id}: mem_map_limit must be on or off: {mml}')
     ups = upscaler_keys(g)   # the game's own upscaler shaders, which DM_UPSCALER=metalfx (the launcher's Game's upscaler) replaces with MetalFX's spatial scaler (nvn_mtl.m up_mfx_encode)
+    uik = ui_keys(g)   # the game's HUD shaders, which frame generation keeps apart from the scene (nvn_mtl.m fg_ui_draw, DM_FRAMEGEN_UI)
     dbr = g.get('draw_barriers', 'full')   # how draw passes are ordered (nvn_mtl.m barrier_game): full = each waits for all earlier GPU work, game = by the game's own barriers, so vertex work overlaps the previous pass's fragments
     if dbr not in ('full', 'game'): sys.exit(f'{g.id}: draw_barriers must be full or game: {dbr}')
     om = g.get('op_mode', 'console')   # the operation mode reported at start (hle_oe.c dm_opmode; DM_OPMODE overrides): console = docked, handheld = touch screen in use (Super Mario Galaxy's pointer)
@@ -270,6 +285,7 @@ def header_one(g):
          f'#define DM_GAME_TEX_DYN_SLOTS {int(tds == "on")}',
          f'#define DM_GAME_DRAW_BARRIERS_GAME {int(dbr == "game")}',
          f'#define DM_GAME_UPSCALER_KEYS {q(",".join(ups))}', f'#define DM_GAME_UPSCALER_N {len(ups)}',
+         f'#define DM_GAME_UI_KEYS {q(",".join(uik))}', f'#define DM_GAME_UI_N {len(uik)}',
          f'#define DM_GAME_VCONV_RANGE {int(vcr == "on")}',
          *([f'#define DM_GAME_NVN_API_MAJOR {api.split(".")[0]}', f'#define DM_GAME_NVN_API_MINOR {api.split(".")[1]}'] if g.get('device_api', '') else []),   # without the key: by the SDK version (hle_nvn.c nvn_api)
          '']
